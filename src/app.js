@@ -1,7 +1,9 @@
 import { analyzeFoodInput, analyzeUserProfile } from "./services/aiService.js";
 import { calculateGoals } from "./services/nutritionService.js";
+import { calculateExerciseCalories, sportOptions } from "./services/sportService.js";
 
 const STORAGE_KEY = "calomei-tracker-v1";
+const SPORT_STORAGE_KEY = "calomei-sport-v1";
 const API_KEY_STORAGE = "calomei-deepseek-key";
 const PROFILE_STORAGE = "calomei-user-profile-v1";
 const HK_TIME_ZONE = "Asia/Hong_Kong";
@@ -41,6 +43,7 @@ const prettyToday = dateFormatter.format(new Date());
 const state = {
   activeView: "overview",
   entries: loadEntries(),
+  sportEntries: loadSportEntries(),
   profile: loadProfile(),
   apiKey: localStorage.getItem(API_KEY_STORAGE) || "",
   draft: "",
@@ -50,6 +53,8 @@ const state = {
   cameraStream: null,
   cameraError: "",
   foodReview: null,
+  activeTool: "food",
+  sportPreview: null,
   meal: "lunch",
   filter: "all",
   loading: false,
@@ -75,6 +80,15 @@ function loadEntries() {
   }
 }
 
+function loadSportEntries() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SPORT_STORAGE_KEY));
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+
 function loadProfile() {
   try {
     const profile = JSON.parse(localStorage.getItem(PROFILE_STORAGE));
@@ -90,6 +104,10 @@ function saveEntries() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.entries));
 }
 
+function saveSportEntries() {
+  localStorage.setItem(SPORT_STORAGE_KEY, JSON.stringify(state.sportEntries));
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -102,6 +120,8 @@ function escapeHtml(value) {
 function round(value) { return Math.round(Number(value) || 0); }
 function sum(entries, key) { return entries.reduce((total, entry) => total + Number(entry[key] || 0), 0); }
 function todaysEntries() { return state.entries.filter((entry) => entry.date === today); }
+function todaysSportEntries() { return state.sportEntries.filter((entry) => entry.date === today); }
+function todaysSportCalories() { return sum(todaysSportEntries(), "calories"); }
 function totals(entries = todaysEntries()) {
   return {
     calories: sum(entries, "calories"),
@@ -110,6 +130,7 @@ function totals(entries = todaysEntries()) {
     fat: sum(entries, "fat"),
   };
 }
+function dailyCalorieBudget() { return currentGoals().calories + todaysSportCalories(); }
 function formatNumber(value) { return new Intl.NumberFormat("en-US").format(round(value)); }
 function percent(value, goal) { return Math.min(100, Math.max(0, (Number(value) / goal) * 100)); }
 function timeLabel(time) { return time || "剛剛"; }
@@ -231,22 +252,29 @@ function pageHeading(eyebrow, title, lede, action = "") {
 function overviewView() {
   const total = totals();
   const goals = currentGoals();
-  const remaining = goals.calories - total.calories;
-  const progress = percent(total.calories, goals.calories);
+  const exerciseCalories = todaysSportCalories();
+  const budget = goals.calories + exerciseCalories;
+  const remaining = budget - total.calories;
+  const progress = percent(total.calories, budget);
   const hasRecentEntries = dailyHistory().some((day) => day.calories > 0);
   const action = `<button class="button ghost" data-action="clear-data"><i data-lucide="trash-2"></i>清除今日記錄</button>`;
   return `${pageHeading("每日攝取", "今日，食咗幾多？", "記低茶餐廳、街市同屋企餐，一眼睇清今日攝取。", action)}
     <div class="stats-grid">
-      ${statCard("今日熱量", formatNumber(total.calories), "kcal", `${formatNumber(remaining)} kcal 彈性空間`, "flame", remaining >= 0 ? "good" : "warn")}
+      ${statCard("今日可食上限", formatNumber(budget), "kcal", `基本 ${formatNumber(goals.calories)} + 運動 ${formatNumber(exerciseCalories)} kcal`, "target", "good")}
+      ${statCard("今日已攝取", formatNumber(total.calories), "kcal", `${formatNumber(remaining)} kcal 剩餘空間`, "flame", remaining >= 0 ? "good" : "warn")}
+      ${statCard("運動消耗", formatNumber(exerciseCalories), "kcal", todaysSportEntries().length ? `${todaysSportEntries().length} 項運動` : "尚未記錄運動", "footprints", exerciseCalories ? "good" : "")}
       ${statCard("蛋白質", formatNumber(total.protein), "g", `目標 ${goals.protein} g`, "beef", total.protein >= goals.protein * .7 ? "good" : "")}
-      ${statCard("碳水化合物", formatNumber(total.carbohydrates), "g", `目標 ${goals.carbohydrates} g`, "wheat", "")}
-      ${statCard("脂肪", formatNumber(total.fat), "g", `目標 ${goals.fat} g`, "droplets", total.fat > goals.fat ? "warn" : "")}
     </div>
-    <div class="main-grid"><section class="panel intake-panel">${intakePanel()}</section><section class="panel ring-panel">${ringPanel(total, progress, remaining)}</section></div>
+    ${dashboardActions()}
+    <div class="main-grid"><section class="panel intake-panel">${state.activeTool === "sport" ? sportPanel() : intakePanel()}</section><section class="panel ring-panel">${ringPanel(total, progress, remaining, budget)}</section></div>
     ${state.foodReview ? reviewPanel() : ""}
     <div class="bottom-grid ${hasRecentEntries ? "" : "single"}">${hasRecentEntries ? `<section class="panel chart-panel">${weekChart()}</section>` : ""}<section class="panel insight-panel">${insights(total)}</section></div>
     <section class="panel recent-panel">${recentPanel()}</section>
     <section class="panel repeat-panel">${repeatFoodsPanel()}</section>`;
+}
+
+function dashboardActions() {
+  return `<div class="dashboard-actions" aria-label="新增記錄"><button class="tool-button ${state.activeTool === "food" ? "active" : ""}" data-action="tool" data-tool="food"><span class="tool-button-icon"><i data-lucide="utensils"></i></span><span><strong>加入食物記錄</strong><small>輸入餐點並估算熱量</small></span><i data-lucide="chevron-right"></i></button><button class="tool-button ${state.activeTool === "sport" ? "active" : ""}" data-action="tool" data-tool="sport"><span class="tool-button-icon sport"><i data-lucide="dumbbell"></i></span><span><strong>記錄運動消耗</strong><small>輸入運動時間，增加可食上限</small></span><i data-lucide="chevron-right"></i></button></div>`;
 }
 
 function statCard(label, value, unit, note, icon, tone) {
@@ -263,6 +291,22 @@ function intakePanel() {
     <div class="intake-footer"><span class="mode-note"><span class="mode-dot ${state.apiKey ? "connected" : ""}"></span>${state.foodReview ? "核對預覽後才會加入記錄" : state.foodPhoto && !state.draft.trim() ? "照片請配合文字描述" : state.apiKey ? "文字描述會傳送至 DeepSeek" : "Demo 估算不會分析照片"}</span><div class="intake-actions"><select id="mealSelect" class="meal-select" aria-label="選擇餐段" ${disabled}>${Object.entries(mealNames).map(([value, label]) => `<option value="${value}" ${state.meal === value ? "selected" : ""}>${label}</option>`).join("")}</select><button class="button primary" data-action="analyze" ${disabled}><i data-lucide="${state.loading ? "loader-circle" : "sparkles"}" class="${state.loading ? "spin" : ""}"></i>${state.loading ? "分析中..." : state.foodReview ? "先確認下方預覽" : "估算熱量"}</button></div></div></div>`;
 }
 
+function sportPanel() {
+  const profile = state.profile || {};
+  const preview = state.sportPreview;
+  const options = sportOptions.map(([value, label]) => `<option value="${value}" ${preview?.sport === value ? "selected" : ""}>${label}</option>`).join("");
+  return `<div class="panel-header"><h2 class="panel-title"><i data-lucide="dumbbell"></i>運動消耗計算</h2><span class="panel-meta">按個人資料估算</span></div><div class="sport-body"><div class="sport-profile-note"><i data-lucide="user-round-check"></i><span>使用 <strong>${escapeHtml(profile.name || "你")}</strong> 的體重 ${formatNumber(profile.weightKg)} kg 計算</span><button class="button ghost" type="button" data-action="settings">修改資料</button></div><form id="sportForm" class="sport-form"><label class="form-field"><span>做了甚麼運動</span><select name="sport" required>${options}</select></label><label class="form-field"><span>運動時間</span><span class="input-with-unit"><input name="duration" type="number" min="1" max="1440" step="1" value="${escapeHtml(preview?.duration || "")}" placeholder="例如 30" required /><span>分鐘</span></span></label><button class="button primary" type="submit"><i data-lucide="calculator"></i>計算消耗</button></form>${preview ? sportPreview(preview) : ""}<div class="sport-history">${sportHistoryPanel()}</div></div>`;
+}
+
+function sportPreview(preview) {
+  return `<div class="sport-preview" role="status"><div><p class="eyebrow">運動結果 · 待確認</p><h3>${escapeHtml(preview.label)} · ${formatNumber(preview.duration)} 分鐘</h3><p>按 ${formatNumber(preview.weight)} kg 體重估算，確認後會增加今日可食上限。</p></div><strong>+${formatNumber(preview.calories)} <small>kcal</small></strong><div class="sport-preview-actions"><button class="button ghost" type="button" data-action="cancel-sport-preview">取消</button><button class="button primary" type="button" data-action="save-sport-preview"><i data-lucide="plus"></i>加入今日消耗</button></div></div>`;
+}
+
+function sportHistoryPanel() {
+  const entries = todaysSportEntries().sort((a, b) => b.time.localeCompare(a.time));
+  return `<div class="sport-history-head"><h3>今日運動</h3><span>${formatNumber(todaysSportCalories())} kcal</span></div>${entries.length ? `<div class="sport-history-list">${entries.map((entry) => `<div class="sport-history-row"><span class="sport-history-icon"><i data-lucide="dumbbell"></i></span><span><strong>${escapeHtml(entry.label)}</strong><small>${formatNumber(entry.duration)} 分鐘 · ${timeLabel(entry.time)}</small></span><strong class="sport-history-kcal">+${formatNumber(entry.calories)} kcal</strong><button class="delete-button" data-action="delete-sport" data-id="${escapeHtml(entry.id)}" aria-label="刪除 ${escapeHtml(entry.label)}"><i data-lucide="x"></i></button></div>`).join("")}</div>` : `<div class="empty-state sport-empty">記錄運動後，消耗的熱量會加到今日可食上限。</div>`}`;
+}
+
 function reviewPanel() {
   const review = state.foodReview;
   const totalCalories = sum(review.items, "calories");
@@ -272,9 +316,9 @@ function reviewPanel() {
     <div class="review-footer"><button class="button ghost" data-action="cancel-review"><i data-lucide="pencil"></i>取消預覽並修改</button><button class="button primary" data-action="save-all-review"><i data-lucide="check"></i>確認並記錄全部 · <span data-review-confirm-total>${formatNumber(totalCalories)}</span> kcal</button></div></section>`;
 }
 
-function ringPanel(total, progress, remaining) {
+function ringPanel(total, progress, remaining, budget = dailyCalorieBudget()) {
   const goals = currentGoals();
-  return `<div class="panel-header"><h2 class="panel-title"><i data-lucide="target"></i>今日目標</h2><span class="panel-meta">${progress.toFixed(0)}% used</span></div><div class="ring-wrap"><div class="ring" style="--progress: ${progress}%"><div class="ring-center"><span class="ring-value">${formatNumber(total.calories)}</span><span class="ring-unit">/ ${formatNumber(goals.calories)} kcal</span></div></div><div class="ring-copy"><div class="ring-caption">${remaining >= 0 ? "仲有幾多位？" : "今日有少少超速"}<strong>${remaining >= 0 ? `${formatNumber(remaining)} kcal` : `+${formatNumber(Math.abs(remaining))} kcal`}</strong></div><div class="mini-key"><span class="key-line"><i class="key-dot lime"></i>已記錄</span><span class="key-line"><i class="key-dot blue"></i>建議攝取</span><span class="key-line"><i class="key-dot orange"></i>超出目標</span></div></div></div><div class="macro-row">${macroLine("蛋白質", total.protein, goals.protein, "var(--sky)", "g")}${macroLine("碳水", total.carbohydrates, goals.carbohydrates, "var(--lime)", "g")}${macroLine("脂肪", total.fat, goals.fat, "var(--coral)", "g")}</div>`;
+  return `<div class="panel-header"><h2 class="panel-title"><i data-lucide="target"></i>今日可食上限</h2><span class="panel-meta">${progress.toFixed(0)}% used</span></div><div class="ring-wrap"><div class="ring" style="--progress: ${progress}%"><div class="ring-center"><span class="ring-value">${formatNumber(total.calories)}</span><span class="ring-unit">/ ${formatNumber(budget)} kcal</span></div></div><div class="ring-copy"><div class="ring-caption">${remaining >= 0 ? "仲有幾多位？" : "今日有少少超速"}<strong>${remaining >= 0 ? `${formatNumber(remaining)} kcal` : `+${formatNumber(Math.abs(remaining))} kcal`}</strong></div><div class="mini-key"><span class="key-line"><i class="key-dot lime"></i>已記錄</span><span class="key-line"><i class="key-dot blue"></i>基本目標 + 運動</span><span class="key-line"><i class="key-dot orange"></i>超出上限</span></div></div></div><div class="macro-row">${macroLine("蛋白質", total.protein, goals.protein, "var(--sky)", "g")}${macroLine("碳水", total.carbohydrates, goals.carbohydrates, "var(--lime)", "g")}${macroLine("脂肪", total.fat, goals.fat, "var(--coral)", "g")}</div>`;
 }
 
 function macroLine(label, value, goal, color, unit) { return `<div class="macro-line"><span class="macro-name">${label}</span><span class="macro-track"><span class="macro-fill" style="width:${percent(value, goal)}%;background:${color}"></span></span><span class="macro-number">${round(value)}${unit}</span></div>`; }
@@ -289,7 +333,8 @@ function weekChart() {
 
 function insights(total) {
   const goals = currentGoals();
-  const remaining = goals.calories - total.calories;
+  const budget = goals.calories + todaysSportCalories();
+  const remaining = budget - total.calories;
   const proteinGap = Math.max(0, goals.protein - total.protein);
   return `<div class="panel-header"><h2 class="panel-title"><i data-lucide="notebook-pen"></i>今日飲食提示</h2><span class="panel-meta">${state.profile?.aiAdvice ? "個人化建議" : "每日提示"}</span></div><div class="insight-body"><div class="insight-lead"><i data-lucide="message-square-quote"></i><p>${escapeHtml(state.profile?.aiAdvice || (remaining >= 0 ? `仲有 ${formatNumber(remaining)} kcal 空間，今晚可以照常食，份量記清楚就得。` : `今日超出 ${formatNumber(Math.abs(remaining))} kcal，唔使聽日絕食；恢復平常飲食就可以。`))}</p></div><div class="insight-list"><div class="insight-item"><i data-lucide="plus"></i><span><strong>蛋白質差 ${formatNumber(proteinGap)} g</strong> · 下一餐可加雞蛋、豆腐或雞肉。</span></div><div class="insight-item"><i data-lucide="clock-3"></i><span><strong>下一餐</strong> · 半碗飯配兩份菜，按飽足感調整份量。</span></div><div class="insight-item"><i data-lucide="footprints"></i><span><strong>活動建議</strong> · 飯後散步 10 至 15 分鐘。</span></div></div></div>`;
 }
@@ -366,9 +411,13 @@ function render() {
 
 function bindEvents() {
   document.querySelectorAll("[data-action='view']").forEach((button) => button.addEventListener("click", () => { state.activeView = button.dataset.view; state.filter = "all"; render(); }));
-  document.querySelector("[data-action='settings']")?.addEventListener("click", () => {
+  document.querySelectorAll("[data-action='settings']").forEach((button) => button.addEventListener("click", () => {
     openSettings("[data-action='settings']");
-  });
+  }));
+  document.querySelectorAll("[data-action='tool']").forEach((button) => button.addEventListener("click", () => {
+    state.activeTool = button.dataset.tool === "sport" ? "sport" : "food";
+    render();
+  }));
   document.querySelectorAll("[data-action='close-settings']").forEach((button) => button.addEventListener("click", (event) => {
     if (event.target === event.currentTarget || event.currentTarget.tagName === "BUTTON") closeSettings();
   }));
@@ -409,6 +458,10 @@ function bindEvents() {
   });
   document.querySelector("#onboardingForm")?.addEventListener("submit", (event) => { event.preventDefault(); saveProfileFromForm(event.currentTarget); });
   document.querySelector("#profileEditForm")?.addEventListener("submit", (event) => { event.preventDefault(); saveProfileFromForm(event.currentTarget); });
+  document.querySelector("#sportForm")?.addEventListener("submit", (event) => { event.preventDefault(); calculateSportPreview(event.currentTarget); });
+  document.querySelector("[data-action='save-sport-preview']")?.addEventListener("click", saveSportPreview);
+  document.querySelector("[data-action='cancel-sport-preview']")?.addEventListener("click", () => { state.sportPreview = null; render(); });
+  document.querySelectorAll("[data-action='delete-sport']").forEach((button) => button.addEventListener("click", () => deleteSportEntry(button.dataset.id)));
   document.querySelector("[data-action='save-api-key']")?.addEventListener("click", saveApiKey);
   document.querySelector("[data-action='clear-api-key']")?.addEventListener("click", clearApiKey);
   document.querySelector("[data-action='reset-profile']")?.addEventListener("click", () => {
@@ -598,6 +651,55 @@ function repeatFood(entryId) {
   render();
 }
 
+function calculateSportPreview(form) {
+  if (!form.reportValidity()) return;
+  const values = Object.fromEntries(new FormData(form));
+  const option = sportOptions.find(([value]) => value === values.sport);
+  try {
+    state.sportPreview = {
+      sport: values.sport,
+      label: option?.[1] || values.sport,
+      duration: Number(values.duration),
+      weight: Number(state.profile?.weightKg),
+      calories: calculateExerciseCalories({ weightKg: state.profile?.weightKg, durationMinutes: values.duration, sport: values.sport }),
+    };
+    showToast(`估算到 ${state.sportPreview.calories} kcal，請確認後加入。`, "success");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+  render();
+}
+
+function saveSportPreview() {
+  const preview = state.sportPreview;
+  if (!preview) return;
+  const now = new Date();
+  state.sportEntries.push({
+    id: `sport-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    date: today,
+    time: now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: HK_TIME_ZONE }),
+    sport: preview.sport,
+    label: preview.label,
+    duration: preview.duration,
+    weight: preview.weight,
+    calories: preview.calories,
+  });
+  saveSportEntries();
+  state.sportPreview = null;
+  state.activeTool = "sport";
+  showToast(`已加入 ${preview.label}，今日可食上限增加 ${formatNumber(preview.calories)} kcal`, "success");
+  render();
+}
+
+function deleteSportEntry(id) {
+  const deleted = state.sportEntries.find((entry) => String(entry.id) === String(id));
+  if (!deleted) return;
+  state.sportEntries = state.sportEntries.filter((entry) => String(entry.id) !== String(id));
+  saveSportEntries();
+  showToast(`已刪除 ${deleted.label} 運動記錄`, "success");
+  render();
+}
+
 function saveApiKey() {
   const enteredKey = document.querySelector("#apiKeyInput")?.value.trim() || "";
   if (enteredKey) {
@@ -781,15 +883,20 @@ function saveAllReviewedFoods() {
 }
 
 function clearToday() {
-  if (!todaysEntries().length) { showToast("今日仲未有記錄。", "error"); render(); return; }
+  if (!todaysEntries().length && !todaysSportEntries().length) { showToast("今日仲未有記錄。", "error"); render(); return; }
   const removedEntries = todaysEntries();
+  const removedSportEntries = todaysSportEntries();
   state.entries = state.entries.filter((entry) => entry.date !== today);
+  state.sportEntries = state.sportEntries.filter((entry) => entry.date !== today);
   saveEntries();
+  saveSportEntries();
   showToast("今日記錄已清除", "success", {
     label: "復原",
     run: () => {
       state.entries.push(...removedEntries);
+      state.sportEntries.push(...removedSportEntries);
       saveEntries();
+      saveSportEntries();
       render();
       showToast("今日記錄已復原", "success");
     },
