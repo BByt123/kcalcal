@@ -229,7 +229,7 @@ h1 { max-width: 620px; margin-bottom: 11px; font-size: 38px; line-height: 1.16; 
 .review-comment { display: flex; align-items: flex-start; gap: 9px; margin: 0 21px 15px; padding: 11px 13px; border-left: 2px solid var(--sky); color: var(--ink); background: rgba(var(--sky-rgb),.09); font-size: 13px; line-height: 1.5; }
 .review-comment svg { width: 15px; height: 15px; flex: 0 0 auto; color: var(--sky); }
 .review-list { border-top: 1px dashed var(--line-strong); }
-.review-row { display: grid; grid-template-columns: minmax(0, 1fr) 132px 124px; align-items: center; gap: 14px; padding: 14px 21px; border-bottom: 1px dashed var(--line); }
+.review-row { display: grid; grid-template-columns: minmax(0, 1fr) 132px 180px; align-items: center; gap: 14px; padding: 14px 21px; border-bottom: 1px dashed var(--line); }
 .review-food-copy { min-width: 0; display: grid; gap: 5px; }
 .review-food-copy strong { overflow-wrap: anywhere; color: var(--ink); font-size: 14px; }
 .review-food-copy small { color: var(--muted); font-size: 12px; line-height: 1.4; }
@@ -237,7 +237,9 @@ h1 { max-width: 620px; margin-bottom: 11px; font-size: 38px; line-height: 1.16; 
 .review-calorie-control { display: flex; align-items: center; gap: 7px; }
 .review-calorie-control input { width: 100px; min-height: 42px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); background: var(--surface); font-family: var(--font-mono); font-size: 14px; }
 .review-calorie-control span { color: var(--muted); font-size: 12px; }
-.review-single-button { justify-self: end; min-height: 42px; padding: 0 10px; white-space: nowrap; }
+.review-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.review-single-button { min-height: 42px; padding: 0 10px; white-space: nowrap; }
+.review-remove-button { flex: 0 0 44px; color: var(--coral); }
 .review-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 21px 18px; }
 .review-footer .button { min-height: 44px; }
 
@@ -463,7 +465,8 @@ h1 { max-width: 620px; margin-bottom: 11px; font-size: 38px; line-height: 1.16; 
   .review-header { padding-left: 16px; padding-right: 16px; }
   .review-comment { margin-left: 16px; margin-right: 16px; }
   .review-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding-left: 16px; padding-right: 16px; }
-  .review-single-button { grid-column: 1 / -1; justify-self: end; }
+  .review-row-actions { grid-column: 1 / -1; width: 100%; }
+  .review-row-actions .review-single-button { flex: 1; }
   .review-footer { align-items: stretch; flex-direction: column; padding-left: 16px; padding-right: 16px; }
   .review-footer .button { width: 100%; }
   .food-row { grid-template-columns: 34px 1fr auto; padding-left: 16px; padding-right: 16px; }
@@ -501,7 +504,7 @@ h1 { max-width: 620px; margin-bottom: 11px; font-size: 38px; line-height: 1.16; 
   .review-header { align-items: flex-start; }
   .review-total strong { font-size: 21px; }
   .review-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .review-single-button { width: 100%; }
+  .review-single-button { width: auto; }
   .quick-row { gap: 7px; }
   .quick-label { width: 100%; }
   .quick-chip { min-height: 40px; }

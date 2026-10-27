@@ -95,7 +95,11 @@ export async function analyzeFoodInput(userInput, apiKey, profile = null, image 
   const profileContext = Number(profile?.age) >= 18 && profile?.goals
     ? `\n\n用家每日目標：${profile.goals.calories} kcal；蛋白質 ${profile.goals.protein} g；目標：${profile.goal}。評語請參考用家目標。`
     : "";
-  const prompt = normalizedInput || "請辨識照片中所有食物及大概份量，估算每項的熱量和營養資料。";
+  const prompt = image
+    ? normalizedInput
+      ? `請分析附上的食物照片，並結合用家描述「${normalizedInput}」判斷食物種類和份量，再估算每項的熱量和營養資料。`
+      : "請辨識照片中所有食物及大概份量，估算每項的熱量和營養資料。"
+    : normalizedInput;
   return callGemini(SYSTEM_PROMPT, `${prompt}${profileContext}`, apiKey, image);
 }
 

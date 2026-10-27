@@ -256,8 +256,8 @@ function statCard(label, value, unit, note, icon, tone) {
 function intakePanel() {
   const disabled = state.loading || state.foodReview ? "disabled" : "";
   return `<div class="panel-header"><h2 class="panel-title"><i data-lucide="message-circle-more"></i>記錄一餐</h2><span class="panel-meta">${state.apiKey ? "Gemini AI" : "快速試算"}</span></div>
-    <div class="intake-body"><label class="input-label" for="foodInput">用廣東話輸入，份量越清楚越準</label><textarea id="foodInput" class="food-input" placeholder="例如：一碗少汁叉燒飯，加杯凍奶茶" ${disabled}>${escapeHtml(state.draft)}</textarea>
-    <div class="photo-input-row"><button class="button photo-pick-button" type="button" data-action="pick-camera" ${disabled}><i data-lucide="camera"></i>拍攝照片</button><button class="button photo-pick-button" type="button" data-action="pick-photo" ${disabled}><i data-lucide="images"></i>${state.foodPhoto ? "更換照片" : "從相簿選擇"}</button><span class="photo-hint">${state.apiKey ? "JPEG、PNG 或 WebP · 最多 8 MB" : "照片分析需要 Gemini API key"}</span><input id="foodPhotoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden ${disabled} /><input id="foodCameraInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden ${disabled} /></div>
+    <div class="intake-body"><label class="input-label" for="foodInput">可以輸入描述、加入照片，或兩者一齊；份量越清楚越準</label><textarea id="foodInput" class="food-input" placeholder="例如：相中係少飯叉燒飯，走汁，加杯凍奶茶" ${disabled}>${escapeHtml(state.draft)}</textarea>
+    <div class="photo-input-row"><button class="button photo-pick-button" type="button" data-action="pick-camera" ${disabled}><i data-lucide="camera"></i>拍攝照片</button><button class="button photo-pick-button" type="button" data-action="pick-photo" ${disabled}><i data-lucide="images"></i>${state.foodPhoto ? "更換照片" : "從相簿選擇"}</button><span class="photo-hint">${state.apiKey ? "可配文字描述 · 最多 8 MB" : "照片分析需要 Gemini API key"}</span><input id="foodPhotoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden ${disabled} /><input id="foodCameraInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden ${disabled} /></div>
     ${state.foodPhoto ? `<div class="photo-preview"><img src="${escapeHtml(state.foodPhoto.previewUrl)}" alt="食物照片預覽"><div class="photo-preview-copy"><strong>${escapeHtml(state.foodPhoto.name)}</strong><small>${state.apiKey ? "照片只用於本次 Gemini 分析" : "設定 Gemini key 後即可分析此照片"}</small></div><button class="icon-button photo-remove-button" type="button" data-action="remove-photo" aria-label="移除食物照片" title="移除照片" ${disabled}><i data-lucide="x"></i></button></div>` : ""}
     <div class="quick-row"><span class="quick-label">一鍵試食：</span>${quickFoods.map((food) => `<button class="quick-chip" data-action="quick-food" data-food="${food}" ${disabled}>${food}</button>`).join("")}</div>
     <div class="intake-footer"><span class="mode-note"><span class="mode-dot ${state.apiKey ? "connected" : ""}"></span>${state.foodReview ? "核對預覽後才會加入記錄" : state.foodPhoto && !state.apiKey ? "照片分析需要 Gemini key" : state.apiKey ? "文字及照片會傳送至 Google Gemini" : "Demo 估算不會分析照片"}</span><div class="intake-actions"><select id="mealSelect" class="meal-select" aria-label="選擇餐段" ${disabled}>${Object.entries(mealNames).map(([value, label]) => `<option value="${value}" ${state.meal === value ? "selected" : ""}>${label}</option>`).join("")}</select><button class="button primary" data-action="analyze" ${disabled}><i data-lucide="${state.loading ? "loader-circle" : "sparkles"}" class="${state.loading ? "spin" : ""}"></i>${state.loading ? "分析中..." : state.foodReview ? "先確認下方預覽" : "估算熱量"}</button></div></div></div>`;
@@ -268,7 +268,7 @@ function reviewPanel() {
   const totalCalories = sum(review.items, "calories");
   return `<section class="panel review-panel" aria-labelledby="reviewTitle"><div class="review-header"><div><p class="eyebrow">AI 估算 · 待核對</p><h2 id="reviewTitle">確認這餐</h2><p class="review-subtitle">${mealNames[review.meal]} · 修改熱量後才會加入記錄</p></div><div class="review-total"><strong data-review-total aria-live="polite">${formatNumber(totalCalories)}</strong><span>kcal 合計</span></div></div>
     ${review.comment ? `<p class="review-comment"><i data-lucide="message-square-quote"></i>${escapeHtml(review.comment)}</p>` : ""}
-    <div class="review-list">${review.items.map((item, index) => `<div class="review-row"><div class="review-food-copy"><strong>${escapeHtml(item.name)}</strong><small>蛋白質 ${formatNumber(item.protein)} g · 碳水 ${formatNumber(item.carbohydrates)} g · 脂肪 ${formatNumber(item.fat)} g</small></div><label class="review-calorie-field"><span>熱量</span><span class="review-calorie-control"><input type="number" min="0" max="9999" step="1" value="${round(item.calories)}" data-review-calories data-review-index="${index}" aria-label="${escapeHtml(item.name)} 熱量（千卡）"><span>kcal</span></span></label><button class="button review-single-button" data-action="save-review-food" data-review-index="${index}"><i data-lucide="plus"></i>記錄此項</button></div>`).join("")}</div>
+    <div class="review-list">${review.items.map((item, index) => `<div class="review-row"><div class="review-food-copy"><strong>${escapeHtml(item.name)}</strong><small>蛋白質 ${formatNumber(item.protein)} g · 碳水 ${formatNumber(item.carbohydrates)} g · 脂肪 ${formatNumber(item.fat)} g</small></div><label class="review-calorie-field"><span>熱量</span><span class="review-calorie-control"><input type="number" min="0" max="9999" step="1" value="${round(item.calories)}" data-review-calories data-review-index="${index}" aria-label="${escapeHtml(item.name)} 熱量（千卡）"><span>kcal</span></span></label><div class="review-row-actions"><button class="button review-single-button" data-action="save-review-food" data-review-index="${index}"><i data-lucide="plus"></i>記錄此項</button><button class="icon-button review-remove-button" type="button" data-action="remove-review-food" data-review-index="${index}" aria-label="從預覽刪除 ${escapeHtml(item.name)}" title="刪除此項"><i data-lucide="trash-2"></i></button></div></div>`).join("")}</div>
     <div class="review-footer"><button class="button ghost" data-action="cancel-review"><i data-lucide="pencil"></i>取消預覽並修改</button><button class="button primary" data-action="save-all-review"><i data-lucide="check"></i>確認並記錄全部 · <span data-review-confirm-total>${formatNumber(totalCalories)}</span> kcal</button></div></section>`;
 }
 
@@ -444,6 +444,7 @@ function bindEvents() {
   }));
   document.querySelectorAll("[data-action='repeat-food']").forEach((button) => button.addEventListener("click", () => repeatFood(button.dataset.entryId)));
   document.querySelectorAll("[data-action='save-review-food']").forEach((button) => button.addEventListener("click", () => saveReviewFood(Number(button.dataset.reviewIndex))));
+  document.querySelectorAll("[data-action='remove-review-food']").forEach((button) => button.addEventListener("click", () => removeReviewFood(Number(button.dataset.reviewIndex))));
   document.querySelector("[data-action='save-all-review']")?.addEventListener("click", saveAllReviewedFoods);
   document.querySelector("[data-action='cancel-review']")?.addEventListener("click", () => { state.foodReview = null; render(); });
   document.querySelectorAll("[data-action='filter']").forEach((button) => button.addEventListener("click", () => { state.filter = button.dataset.filter; render(); }));
@@ -708,6 +709,7 @@ async function analyzeAndPreview() {
         fat: round(item.fat),
       })),
     };
+    if (image) state.foodPhoto = null;
     showToast("估算完成，請核對熱量後再記錄。", "success");
   } catch (error) {
     showToast(error.message || "AI 暫時行開咗，請稍後再試。", "error");
@@ -750,6 +752,16 @@ function saveReviewFood(index) {
     showToast(`${item.name} · ${formatNumber(item.calories)} kcal 已記錄`, "success");
   }
   render();
+}
+
+function removeReviewFood(index) {
+  if (!state.foodReview) return;
+  const [item] = state.foodReview.items.splice(index, 1);
+  if (!item) return;
+  const isEmpty = state.foodReview.items.length === 0;
+  if (isEmpty) state.foodReview = null;
+  render();
+  showToast(isEmpty ? "已移除最後一項，請重新輸入食物再估算。" : `${item.name} 已從預覽移除`, "success");
 }
 
 function saveAllReviewedFoods() {
