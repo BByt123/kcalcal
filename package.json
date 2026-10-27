@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "dev": "node dev-server.mjs",
+    "preview": "node dev-server.mjs"
+  },
+  "dependencies": {
+    "lucide-react": "^1.62.0",
+    "recharts": "^3.10.1"
+  }
+}
