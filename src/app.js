@@ -215,10 +215,11 @@ function toastMarkup(toast = state.toast) {
   return toast ? `<div class="toast ${toast.type}" role="${toast.type === "error" ? "alert" : "status"}"><i data-lucide="${toast.type === "error" ? "circle-alert" : "circle-check"}"></i><span>${escapeHtml(toast.message)}</span>${toast.action ? `<button class="toast-action" type="button" data-action="toast-action">${escapeHtml(toast.action.label)}</button>` : ""}</div>` : "";
 }
 
-function profileFields(profile = {}) {
+function profileFields(profile = {}, includeCalorieTarget = false) {
   const age = Number(profile.age);
   const isYouth = age >= 6 && age < 18;
   const goal = isYouth ? "maintain" : profile.goal || "maintain";
+  const goalOptions = [["lose", "減脂", "溫和熱量赤字"], ["maintain", "維持體重", "按目前需要"], ["gain", "增肌", "溫和熱量盈餘"]];
   return `<div class="profile-form-grid">
     <label class="form-field"><span>稱呼</span><input name="name" type="text" maxlength="30" value="${escapeHtml(profile.name || "")}" placeholder="例如：阿明" /></label>
     <label class="form-field"><span>年齡</span><input name="age" type="number" min="6" max="100" required value="${escapeHtml(profile.age || "")}" placeholder="歲" /></label>
@@ -226,7 +227,8 @@ function profileFields(profile = {}) {
     <label class="form-field"><span>身高</span><input name="heightCm" type="number" min="100" max="230" required value="${escapeHtml(profile.heightCm || "")}" placeholder="cm" /></label>
     <label class="form-field"><span>體重</span><input name="weightKg" type="number" min="15" max="300" step="0.1" required value="${escapeHtml(profile.weightKg || "")}" placeholder="kg" /></label>
     <label class="form-field"><span>日常活動量</span><select name="activity" required><option value="sedentary" ${profile.activity === "sedentary" ? "selected" : ""}>少運動，久坐為主</option><option value="light" ${profile.activity === "light" || !profile.activity ? "selected" : ""}>每週輕量活動 1–3 日</option><option value="moderate" ${profile.activity === "moderate" ? "selected" : ""}>每週中量活動 3–5 日</option><option value="active" ${profile.activity === "active" ? "selected" : ""}>每週高強度活動 6–7 日</option><option value="very" ${profile.activity === "very" ? "selected" : ""}>體力工作或高強度訓練</option></select></label>
-    <label class="form-field full"><span>目前目標</span><select name="goal" required><option value="lose" ${goal === "lose" ? "selected" : ""} ${isYouth ? "disabled" : ""}>減脂 · 溫和熱量赤字</option><option value="maintain" ${goal === "maintain" ? "selected" : ""}>維持體重</option><option value="gain" ${goal === "gain" ? "selected" : ""} ${isYouth ? "disabled" : ""}>增肌 · 溫和熱量盈餘</option></select></label>
+    <label class="form-field full"><span>目前目標</span><div class="goal-switch" role="group" aria-label="選擇目前目標">${goalOptions.map(([value, label, description]) => `<button class="goal-option ${goal === value ? "active" : ""}" type="button" data-action="select-goal" data-goal="${value}" aria-pressed="${goal === value}" ${isYouth && value !== "maintain" ? "disabled" : ""}><strong>${label}</strong><small>${description}</small></button>`).join("")}</div><input name="goal" type="hidden" value="${goal}" /><small id="goalHelp" class="field-help">${isYouth ? "6–17 歲只提供維持體重估算，請由家長／監護人協助。" : "在手機上點一下目標，再按下方更新個人目標。"}</small></label>
+    ${includeCalorieTarget ? `<label class="form-field full"><span>每日 kcal 上限</span><span class="input-with-unit"><input name="calorieTarget" type="number" min="1000" max="10000" step="10" value="${escapeHtml(profile.goals?.calories || "")}" data-original="${escapeHtml(profile.goals?.calories || "")}" placeholder="例如 2100" inputmode="numeric" required /><span>kcal／日</span></span><small class="field-help">AI 估算後仍可在這裡手動調整；運動消耗會另外加到今日可食上限。</small></label>` : ""}
   </div>`;
 }
 
@@ -235,10 +237,15 @@ function syncAgeGoalOptions(form) {
   const goal = form.elements.namedItem("goal");
   if (!goal) return;
   const isYouth = age >= 6 && age < 18;
-  for (const option of goal.options) {
-    if (option.value !== "maintain") option.disabled = isYouth;
-  }
   if (isYouth) goal.value = "maintain";
+  form.querySelectorAll("[data-action='select-goal']").forEach((button) => {
+    const disabled = isYouth && button.dataset.goal !== "maintain";
+    button.disabled = disabled;
+    button.classList.toggle("active", button.dataset.goal === goal.value);
+    button.setAttribute("aria-pressed", String(button.dataset.goal === goal.value));
+  });
+  const help = form.querySelector("#goalHelp");
+  if (help) help.textContent = isYouth ? "6–17 歲只提供維持體重估算，請由家長／監護人協助。" : "在手機上點一下目標，再按下方更新個人目標。";
 }
 
 function onboardingView() {
@@ -252,7 +259,7 @@ function settingsDialog() {
   const providerDescription = state.provider === "gemini"
     ? "Gemini 支援文字及圖片分析。"
     : "DeepSeek 預設使用文字分析；照片請配合描述。";
-  return `<div class="modal-backdrop" data-action="close-settings"><section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1"><div class="modal-head"><div><p class="eyebrow">設定</p><h2 id="settingsTitle">設定與個人資料</h2></div><button class="icon-button" data-action="close-settings" aria-label="關閉設定"><i data-lucide="x"></i></button></div><div class="settings-section"><div class="settings-section-head"><div><h3>AI 供應商</h3><p>${providerDescription}</p></div><span class="api-status ${selectedKey ? "connected" : ""}">${selectedKey ? "已連接" : "未連接"}</span></div><div class="provider-switch" role="group" aria-label="選擇 AI 供應商"><button class="provider-option ${state.provider === "deepseek" ? "active" : ""}" type="button" data-action="select-provider" data-provider="deepseek" aria-pressed="${state.provider === "deepseek"}">DeepSeek <small>預設</small></button><button class="provider-option ${state.provider === "gemini" ? "active" : ""}" type="button" data-action="select-provider" data-provider="gemini" aria-pressed="${state.provider === "gemini"}">Gemini</button></div><label class="form-field"><span>${selectedLabel} API key</span><input id="apiKeyInput" type="password" placeholder="${keyPlaceholder}" autocomplete="new-password" /></label><p class="api-hint">${selectedLabel} key 只會儲存在此瀏覽器。${state.provider === "gemini" ? "食物文字及照片會傳送至 Google Gemini。" : "食物描述及成人目標資料會傳送至 DeepSeek；圖片不會直接傳送。"} GitHub Pages 是公開網站，請勿把 key 寫進程式碼。</p><div class="api-actions"><button class="button" data-action="save-api-key"><i data-lucide="save"></i>${selectedKey ? `更新 ${selectedLabel} key` : `儲存 ${selectedLabel} key`}</button>${selectedKey ? `<button class="button ghost danger" data-action="clear-api-key"><i data-lucide="key-round"></i>移除 ${selectedLabel} key</button>` : ""}</div></div><div class="settings-section"><div class="settings-section-head"><div><h3>每日目標</h3><p>更新資料後會重新估算攝取目標。</p></div></div><form id="profileEditForm">${profileFields(state.profile || {})}<button class="button primary" type="submit"><i data-lucide="calculator"></i>更新個人目標</button></form></div><div class="modal-foot"><button class="button danger" data-action="reset-profile"><i data-lucide="rotate-ccw"></i>重設個人資料</button><button class="button ghost" data-action="close-settings">完成</button></div></section></div>`;
+  return `<div class="modal-backdrop" data-action="close-settings"><section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1"><div class="modal-head"><div><p class="eyebrow">設定</p><h2 id="settingsTitle">設定與個人資料</h2></div><button class="icon-button" data-action="close-settings" aria-label="關閉設定"><i data-lucide="x"></i></button></div><div class="settings-section"><div class="settings-section-head"><div><h3>AI 供應商</h3><p>${providerDescription}</p></div><span class="api-status ${selectedKey ? "connected" : ""}">${selectedKey ? "已連接" : "未連接"}</span></div><div class="provider-switch" role="group" aria-label="選擇 AI 供應商"><button class="provider-option ${state.provider === "deepseek" ? "active" : ""}" type="button" data-action="select-provider" data-provider="deepseek" aria-pressed="${state.provider === "deepseek"}">DeepSeek <small>預設</small></button><button class="provider-option ${state.provider === "gemini" ? "active" : ""}" type="button" data-action="select-provider" data-provider="gemini" aria-pressed="${state.provider === "gemini"}">Gemini</button></div><label class="form-field"><span>${selectedLabel} API key</span><input id="apiKeyInput" type="password" placeholder="${keyPlaceholder}" autocomplete="new-password" /></label><p class="api-hint">${selectedLabel} key 只會儲存在此瀏覽器。${state.provider === "gemini" ? "食物文字及照片會傳送至 Google Gemini。" : "食物描述及成人目標資料會傳送至 DeepSeek；圖片不會直接傳送。"} GitHub Pages 是公開網站，請勿把 key 寫進程式碼。</p><div class="api-actions"><button class="button" data-action="save-api-key"><i data-lucide="save"></i>${selectedKey ? `更新 ${selectedLabel} key` : `儲存 ${selectedLabel} key`}</button>${selectedKey ? `<button class="button ghost danger" data-action="clear-api-key"><i data-lucide="key-round"></i>移除 ${selectedLabel} key</button>` : ""}</div></div><div class="settings-section"><div class="settings-section-head"><div><h3>每日目標</h3><p>可以改變計劃和 AI 設定的 kcal 上限。</p></div></div><form id="profileEditForm">${profileFields(state.profile || {}, true)}<button class="button primary" type="submit"><i data-lucide="calculator"></i>儲存目標設定</button></form></div><div class="modal-foot"><button class="button danger" data-action="reset-profile"><i data-lucide="rotate-ccw"></i>重設個人資料</button><button class="button ghost" data-action="close-settings">完成</button></div></section></div>`;
 }
 
 function cameraDialog() {
@@ -448,6 +455,18 @@ function bindEvents() {
   document.querySelectorAll("[data-action='tool']").forEach((button) => button.addEventListener("click", () => {
     state.activeTool = button.dataset.tool === "sport" ? "sport" : "food";
     render();
+  }));
+  document.querySelectorAll("[data-action='select-goal']").forEach((button) => button.addEventListener("click", () => {
+    if (button.disabled) return;
+    const form = button.closest("form");
+    const goal = form?.elements.namedItem("goal");
+    if (!goal) return;
+    goal.value = button.dataset.goal;
+    form.querySelectorAll("[data-action='select-goal']").forEach((option) => {
+      const active = option.dataset.goal === goal.value;
+      option.classList.toggle("active", active);
+      option.setAttribute("aria-pressed", String(active));
+    });
   }));
   document.querySelectorAll("[data-action='close-settings']").forEach((button) => button.addEventListener("click", (event) => {
     if (event.target === event.currentTarget || event.currentTarget.tagName === "BUTTON") closeSettings();
@@ -764,6 +783,9 @@ function clearApiKey() {
 async function saveProfileFromForm(form) {
   if (!form.reportValidity()) return;
   const values = Object.fromEntries(new FormData(form));
+  const calorieTargetInput = form.elements.namedItem("calorieTarget");
+  const calorieTargetChanged = form.id === "profileEditForm" && calorieTargetInput && String(values.calorieTarget) !== String(calorieTargetInput.dataset.original || "");
+  const manualCalorieTarget = calorieTargetChanged ? Number(values.calorieTarget) : null;
   const profile = {
     name: values.name.trim(),
     age: Number(values.age),
@@ -772,6 +794,13 @@ async function saveProfileFromForm(form) {
     weightKg: Number(values.weightKg),
     activity: values.activity,
     goal: Number(values.age) < 18 ? "maintain" : values.goal,
+  };
+  const applyManualCalorieTarget = () => {
+    if (!Number.isFinite(manualCalorieTarget) || manualCalorieTarget <= 0) return;
+    const minimum = profile.age < 18 ? 1000 : 1200;
+    profile.goals.calories = Math.round(Math.min(10000, Math.max(minimum, manualCalorieTarget)) / 10) * 10;
+    profile.goals.fat = Math.round(profile.goals.calories * 0.28 / 9);
+    profile.goals.carbohydrates = Math.max(0, Math.round((profile.goals.calories - profile.goals.protein * 4 - profile.goals.fat * 9) / 4));
   };
   const baseline = calculateGoals(profile);
   profile.goals = baseline;
@@ -798,11 +827,13 @@ async function saveProfileFromForm(form) {
       profile.aiAdvice = typeof aiResult.daily_tip === "string" ? aiResult.daily_tip.slice(0, 320) : "個人化目標已更新。份量記清楚啲，卡老味先唔使靠估。";
       profile.rationale = typeof aiResult.rationale === "string" ? aiResult.rationale.slice(0, 320) : "以基本資料和活動量作估算。";
     }
+    applyManualCalorieTarget();
     state.profile = profile;
     localStorage.setItem(PROFILE_STORAGE, JSON.stringify(profile));
     state.settingsOpen = false;
     showToast(activeApiKey() && profile.age >= 18 ? `${providerLabel()} 已完成個人分析：${profile.goals.calories} kcal / 日` : `每日目標已估算：${profile.goals.calories} kcal / 日`, "success");
   } catch (error) {
+    applyManualCalorieTarget();
     profile.aiAdvice = `目標先按基本代謝公式估算。加好 ${providerLabel()} key 後，可以再更新個人化建議。`;
     state.profile = profile;
     localStorage.setItem(PROFILE_STORAGE, JSON.stringify(profile));

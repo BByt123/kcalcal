@@ -414,6 +414,15 @@ h1 { max-width: 620px; margin-bottom: 11px; font-size: 38px; line-height: 1.16; 
 .form-field input, .form-field select { width: 100%; min-height: 44px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); background: var(--surface-2); font-size: 14px; }
 .form-field input::placeholder { color: var(--placeholder); }
 .form-field select { color-scheme: inherit; }
+.goal-switch { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.goal-option { min-width: 0; min-height: 60px; display: grid; align-content: center; gap: 4px; padding: 8px 9px; border: 1px solid var(--line-strong); border-radius: 7px; color: var(--muted); background: var(--surface-2); text-align: left; transition: .16s ease; }
+.goal-option:hover { border-color: var(--jade); color: var(--ink); }
+.goal-option.active { border-color: var(--jade); color: var(--jade); background: var(--jade-soft); box-shadow: inset 0 0 0 1px rgba(var(--jade-rgb), .14); }
+.goal-option strong { font-size: 13px; }
+.goal-option small { color: var(--muted); font-size: 11px; line-height: 1.3; }
+.goal-option.active small { color: var(--jade); }
+.goal-option:disabled { cursor: not-allowed; opacity: .45; }
+.field-help { color: var(--muted); font-size: 12px; line-height: 1.45; }
 .form-disclaimer { margin: 16px 21px 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.55; }
 .onboarding-submit { width: calc(100% - 42px); margin: 16px 21px 21px; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 8; display: grid; place-items: center; padding: 20px; background: var(--scrim); }
