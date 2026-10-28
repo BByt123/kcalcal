@@ -4,7 +4,8 @@ import { calculateExerciseCalories, sportOptions } from "./services/sportService
 
 const STORAGE_KEY = "calomei-tracker-v1";
 const SPORT_STORAGE_KEY = "calomei-sport-v1";
-const API_KEY_STORAGE = "calomei-deepseek-key";
+const AI_PROVIDER_STORAGE = "calomei-ai-provider";
+const AI_KEY_STORAGE = { deepseek: "calomei-deepseek-key", gemini: "calomei-gemini-key" };
 const PROFILE_STORAGE = "calomei-user-profile-v1";
 const HK_TIME_ZONE = "Asia/Hong_Kong";
 const MAX_FOOD_PHOTO_BYTES = 8 * 1024 * 1024;
@@ -45,7 +46,8 @@ const state = {
   entries: loadEntries(),
   sportEntries: loadSportEntries(),
   profile: loadProfile(),
-  apiKey: localStorage.getItem(API_KEY_STORAGE) || "",
+  provider: loadProvider(),
+  apiKeys: loadApiKeys(),
   draft: "",
   foodPhoto: null,
   cameraOpen: false,
@@ -89,6 +91,18 @@ function loadSportEntries() {
   }
 }
 
+function loadProvider() {
+  const saved = localStorage.getItem(AI_PROVIDER_STORAGE);
+  return saved === "gemini" ? "gemini" : "deepseek";
+}
+
+function loadApiKeys() {
+  return {
+    deepseek: localStorage.getItem(AI_KEY_STORAGE.deepseek) || "",
+    gemini: localStorage.getItem(AI_KEY_STORAGE.gemini) || "",
+  };
+}
+
 function loadProfile() {
   try {
     const profile = JSON.parse(localStorage.getItem(PROFILE_STORAGE));
@@ -107,6 +121,9 @@ function saveEntries() {
 function saveSportEntries() {
   localStorage.setItem(SPORT_STORAGE_KEY, JSON.stringify(state.sportEntries));
 }
+
+function activeApiKey() { return state.apiKeys[state.provider] || ""; }
+function providerLabel(provider = state.provider) { return provider === "gemini" ? "Gemini" : "DeepSeek"; }
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -225,16 +242,24 @@ function syncAgeGoalOptions(form) {
 }
 
 function onboardingView() {
-  return `<section class="onboarding-wrap"><div class="onboarding-intro"><p class="eyebrow">每日攝取計劃</p><h1>先認識你，<br />再計啱你食幾多。</h1><p class="lede">提供基本資料，先估算每日能量需要，再按你的目標安排營養比例。</p><div class="privacy-note"><i data-lucide="shield-check"></i><span>資料保存在此瀏覽器。成年人使用 DeepSeek 個人化目標時，基本資料會傳送至 DeepSeek；6–17 歲只在本機估算。分析食物描述亦會傳送至 DeepSeek。</span></div></div><form id="onboardingForm" class="panel onboarding-form"><div class="panel-header"><h2 class="panel-title"><i data-lucide="user-round"></i>你的基本資料</h2><span class="panel-meta">約 1 分鐘</span></div><div class="onboarding-fields">${profileFields()}</div><div class="form-disclaimer">熱量是一般估算，並非醫療建議。6–17 歲會採用成長期估算，不提供減脂或增重目標，請由家長／監護人協助；有特殊健康狀況請先諮詢醫護專業人士。</div><button class="button primary onboarding-submit" type="submit" ${state.onboardingLoading ? "disabled" : ""}><i data-lucide="${state.onboardingLoading ? "loader-circle" : "sparkles"}" class="${state.onboardingLoading ? "spin" : ""}"></i>${state.onboardingLoading ? "正在整理個人計劃..." : "計算我的每日目標"}</button></form></section>`;
+  return `<section class="onboarding-wrap"><div class="onboarding-intro"><p class="eyebrow">每日攝取計劃</p><h1>先認識你，<br />再計啱你食幾多。</h1><p class="lede">提供基本資料，先估算每日能量需要，再按你的目標安排營養比例。</p><div class="privacy-note"><i data-lucide="shield-check"></i><span>資料保存在此瀏覽器。成年人使用 ${providerLabel()} 個人化目標時，基本資料會傳送至 ${providerLabel()}；6–17 歲只在本機估算。分析食物描述亦會傳送至 ${providerLabel()}。</span></div></div><form id="onboardingForm" class="panel onboarding-form"><div class="panel-header"><h2 class="panel-title"><i data-lucide="user-round"></i>你的基本資料</h2><span class="panel-meta">約 1 分鐘</span></div><div class="onboarding-fields">${profileFields()}</div><div class="form-disclaimer">熱量是一般估算，並非醫療建議。6–17 歲會採用成長期估算，不提供減脂或增重目標，請由家長／監護人協助；有特殊健康狀況請先諮詢醫護專業人士。</div><button class="button primary onboarding-submit" type="submit" ${state.onboardingLoading ? "disabled" : ""}><i data-lucide="${state.onboardingLoading ? "loader-circle" : "sparkles"}" class="${state.onboardingLoading ? "spin" : ""}"></i>${state.onboardingLoading ? "正在整理個人計劃..." : "計算我的每日目標"}</button></form></section>`;
 }
 
 function settingsDialog() {
-  const keyPlaceholder = state.apiKey ? "輸入新 key 以取代已儲存的 key" : "貼上你自己的 DeepSeek key";
-  return `<div class="modal-backdrop" data-action="close-settings"><section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1"><div class="modal-head"><div><p class="eyebrow">設定</p><h2 id="settingsTitle">設定與個人資料</h2></div><button class="icon-button" data-action="close-settings" aria-label="關閉設定"><i data-lucide="x"></i></button></div><div class="settings-section"><div class="settings-section-head"><div><h3>DeepSeek AI</h3><p>${state.apiKey ? "key 已儲存在此瀏覽器" : "使用你自己的 DeepSeek API key"}</p></div><span class="api-status ${state.apiKey ? "connected" : ""}">${state.apiKey ? "已連接" : "未連接"}</span></div><label class="form-field"><span>DeepSeek API key</span><input id="apiKeyInput" type="password" placeholder="${keyPlaceholder}" autocomplete="new-password" /></label><p class="api-hint">飲食描述與成年人的個人目標分析會傳送至 DeepSeek；記錄和未成年人的基本資料留在此瀏覽器。DeepSeek 直接 API 目前只支援文字，照片需先配合文字描述。GitHub Pages 是公開網站，請勿把 key 寫進程式碼。<a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">管理 API key</a></p><div class="api-actions"><button class="button" data-action="save-api-key"><i data-lucide="save"></i>${state.apiKey ? "更新 API key" : "儲存 API key"}</button>${state.apiKey ? `<button class="button ghost danger" data-action="clear-api-key"><i data-lucide="key-round"></i>移除已存 key</button>` : ""}</div></div><div class="settings-section"><div class="settings-section-head"><div><h3>每日目標</h3><p>更新資料後會重新估算攝取目標。</p></div></div><form id="profileEditForm">${profileFields(state.profile || {})}<button class="button primary" type="submit"><i data-lucide="calculator"></i>更新個人目標</button></form></div><div class="modal-foot"><button class="button danger" data-action="reset-profile"><i data-lucide="rotate-ccw"></i>重設個人資料</button><button class="button ghost" data-action="close-settings">完成</button></div></section></div>`;
+  const selectedKey = activeApiKey();
+  const selectedLabel = providerLabel();
+  const keyPlaceholder = selectedKey ? "輸入新 key 以取代已儲存的 key" : `貼上你自己的 ${selectedLabel} key`;
+  const providerDescription = state.provider === "gemini"
+    ? "Gemini 支援文字及圖片分析。"
+    : "DeepSeek 預設使用文字分析；照片請配合描述。";
+  return `<div class="modal-backdrop" data-action="close-settings"><section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1"><div class="modal-head"><div><p class="eyebrow">設定</p><h2 id="settingsTitle">設定與個人資料</h2></div><button class="icon-button" data-action="close-settings" aria-label="關閉設定"><i data-lucide="x"></i></button></div><div class="settings-section"><div class="settings-section-head"><div><h3>AI 供應商</h3><p>${providerDescription}</p></div><span class="api-status ${selectedKey ? "connected" : ""}">${selectedKey ? "已連接" : "未連接"}</span></div><div class="provider-switch" role="group" aria-label="選擇 AI 供應商"><button class="provider-option ${state.provider === "deepseek" ? "active" : ""}" type="button" data-action="select-provider" data-provider="deepseek" aria-pressed="${state.provider === "deepseek"}">DeepSeek <small>預設</small></button><button class="provider-option ${state.provider === "gemini" ? "active" : ""}" type="button" data-action="select-provider" data-provider="gemini" aria-pressed="${state.provider === "gemini"}">Gemini</button></div><label class="form-field"><span>${selectedLabel} API key</span><input id="apiKeyInput" type="password" placeholder="${keyPlaceholder}" autocomplete="new-password" /></label><p class="api-hint">${selectedLabel} key 只會儲存在此瀏覽器。${state.provider === "gemini" ? "食物文字及照片會傳送至 Google Gemini。" : "食物描述及成人目標資料會傳送至 DeepSeek；圖片不會直接傳送。"} GitHub Pages 是公開網站，請勿把 key 寫進程式碼。</p><div class="api-actions"><button class="button" data-action="save-api-key"><i data-lucide="save"></i>${selectedKey ? `更新 ${selectedLabel} key` : `儲存 ${selectedLabel} key`}</button>${selectedKey ? `<button class="button ghost danger" data-action="clear-api-key"><i data-lucide="key-round"></i>移除 ${selectedLabel} key</button>` : ""}</div></div><div class="settings-section"><div class="settings-section-head"><div><h3>每日目標</h3><p>更新資料後會重新估算攝取目標。</p></div></div><form id="profileEditForm">${profileFields(state.profile || {})}<button class="button primary" type="submit"><i data-lucide="calculator"></i>更新個人目標</button></form></div><div class="modal-foot"><button class="button danger" data-action="reset-profile"><i data-lucide="rotate-ccw"></i>重設個人資料</button><button class="button ghost" data-action="close-settings">完成</button></div></section></div>`;
 }
 
 function cameraDialog() {
-  return `<div class="modal-backdrop" data-action="close-camera"><section class="modal-panel camera-panel" role="dialog" aria-modal="true" aria-labelledby="cameraTitle" tabindex="-1"><div class="modal-head"><div><p class="eyebrow">食物照片</p><h2 id="cameraTitle">${state.cameraError ? "相機無法使用" : "拍攝食物"}</h2></div><button class="icon-button" data-action="close-camera" aria-label="關閉相機"><i data-lucide="x"></i></button></div><div class="camera-body">${state.cameraError ? `<p class="camera-error" role="alert">${escapeHtml(state.cameraError)}</p>` : `<video id="cameraPreview" autoplay playsinline muted aria-label="相機即時預覽"></video>`}<p class="camera-note">照片可幫你記住餐點；DeepSeek 目前只分析文字，拍照後請在描述欄寫下食物和份量。</p><div class="camera-actions"><button class="button ghost" data-action="close-camera">取消</button>${state.cameraError ? `<button class="button primary" data-action="pick-photo"><i data-lucide="images"></i>從相簿選擇</button>` : `<button class="button primary" data-action="capture-camera" ${state.cameraStream ? "" : "disabled"}><i data-lucide="camera"></i>${state.cameraLoading ? "正在開啟相機..." : "拍下照片"}</button>`}</div></div></section></div>`;
+  const cameraNote = state.provider === "gemini"
+    ? "拍照後可以直接交給 Gemini 分析，也可以在描述欄補充份量。"
+    : "照片可幫你記住餐點；DeepSeek 目前只分析文字，拍照後請在描述欄寫下食物和份量。";
+  return `<div class="modal-backdrop" data-action="close-camera"><section class="modal-panel camera-panel" role="dialog" aria-modal="true" aria-labelledby="cameraTitle" tabindex="-1"><div class="modal-head"><div><p class="eyebrow">食物照片</p><h2 id="cameraTitle">${state.cameraError ? "相機無法使用" : "拍攝食物"}</h2></div><button class="icon-button" data-action="close-camera" aria-label="關閉相機"><i data-lucide="x"></i></button></div><div class="camera-body">${state.cameraError ? `<p class="camera-error" role="alert">${escapeHtml(state.cameraError)}</p>` : `<video id="cameraPreview" autoplay playsinline muted aria-label="相機即時預覽"></video>`}<p class="camera-note">${cameraNote}</p><div class="camera-actions"><button class="button ghost" data-action="close-camera">取消</button>${state.cameraError ? `<button class="button primary" data-action="pick-photo"><i data-lucide="images"></i>從相簿選擇</button>` : `<button class="button primary" data-action="capture-camera" ${state.cameraStream ? "" : "disabled"}><i data-lucide="camera"></i>${state.cameraLoading ? "正在開啟相機..." : "拍下照片"}</button>`}</div></div></section></div>`;
 }
 
 function viewLabel() { return state.activeView === "overview" ? "今日總覽" : state.activeView === "trends" ? "趨勢分析" : "飲食記錄"; }
@@ -283,12 +308,13 @@ function statCard(label, value, unit, note, icon, tone) {
 
 function intakePanel() {
   const disabled = state.loading || state.foodReview ? "disabled" : "";
-  return `<div class="panel-header"><h2 class="panel-title"><i data-lucide="message-circle-more"></i>記錄一餐</h2><span class="panel-meta">${state.apiKey ? "DeepSeek AI" : "快速試算"}</span></div>
+  const key = activeApiKey();
+  return `<div class="panel-header"><h2 class="panel-title"><i data-lucide="message-circle-more"></i>記錄一餐</h2><span class="panel-meta">${key ? `${providerLabel()} AI` : "快速試算"}</span></div>
     <div class="intake-body"><label class="input-label" for="foodInput">可以輸入描述、加入照片，或兩者一齊；份量越清楚越準</label><textarea id="foodInput" class="food-input" placeholder="例如：相中係少飯叉燒飯，走汁，加杯凍奶茶" ${disabled}>${escapeHtml(state.draft)}</textarea>
-    <div class="photo-input-row"><button class="button photo-pick-button" type="button" data-action="pick-camera" ${disabled}><i data-lucide="camera"></i>拍攝照片</button><button class="button photo-pick-button" type="button" data-action="pick-photo" ${disabled}><i data-lucide="images"></i>${state.foodPhoto ? "更換照片" : "從相簿選擇"}</button><span class="photo-hint">DeepSeek 只讀文字；照片請配合描述 · 最多 8 MB</span><input id="foodPhotoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden ${disabled} /><input id="foodCameraInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden ${disabled} /></div>
-    ${state.foodPhoto ? `<div class="photo-preview"><img src="${escapeHtml(state.foodPhoto.previewUrl)}" alt="食物照片預覽"><div class="photo-preview-copy"><strong>${escapeHtml(state.foodPhoto.name)}</strong><small>照片只作參考；請在上方補充食物和份量描述</small></div><button class="icon-button photo-remove-button" type="button" data-action="remove-photo" aria-label="移除食物照片" title="移除照片" ${disabled}><i data-lucide="x"></i></button></div>` : ""}
+    <div class="photo-input-row"><button class="button photo-pick-button" type="button" data-action="pick-camera" ${disabled}><i data-lucide="camera"></i>拍攝照片</button><button class="button photo-pick-button" type="button" data-action="pick-photo" ${disabled}><i data-lucide="images"></i>${state.foodPhoto ? "更換照片" : "從相簿選擇"}</button><span class="photo-hint">${state.provider === "gemini" ? "Gemini 可分析照片（需要 key）· 最多 8 MB" : "DeepSeek 只讀文字；照片請配合描述 · 最多 8 MB"}</span><input id="foodPhotoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden ${disabled} /><input id="foodCameraInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden ${disabled} /></div>
+    ${state.foodPhoto ? `<div class="photo-preview"><img src="${escapeHtml(state.foodPhoto.previewUrl)}" alt="食物照片預覽"><div class="photo-preview-copy"><strong>${escapeHtml(state.foodPhoto.name)}</strong><small>${state.provider === "gemini" ? "Gemini 會分析照片；可再補充份量描述" : "照片只作參考；請在上方補充食物和份量描述"}</small></div><button class="icon-button photo-remove-button" type="button" data-action="remove-photo" aria-label="移除食物照片" title="移除照片" ${disabled}><i data-lucide="x"></i></button></div>` : ""}
     <div class="quick-row"><span class="quick-label">一鍵試食：</span>${quickFoods.map((food) => `<button class="quick-chip" data-action="quick-food" data-food="${food}" ${disabled}>${food}</button>`).join("")}</div>
-    <div class="intake-footer"><span class="mode-note"><span class="mode-dot ${state.apiKey ? "connected" : ""}"></span>${state.foodReview ? "核對預覽後才會加入記錄" : state.foodPhoto && !state.draft.trim() ? "照片請配合文字描述" : state.apiKey ? "文字描述會傳送至 DeepSeek" : "Demo 估算不會分析照片"}</span><div class="intake-actions"><select id="mealSelect" class="meal-select" aria-label="選擇餐段" ${disabled}>${Object.entries(mealNames).map(([value, label]) => `<option value="${value}" ${state.meal === value ? "selected" : ""}>${label}</option>`).join("")}</select><button class="button primary" data-action="analyze" ${disabled}><i data-lucide="${state.loading ? "loader-circle" : "sparkles"}" class="${state.loading ? "spin" : ""}"></i>${state.loading ? "分析中..." : state.foodReview ? "先確認下方預覽" : "估算熱量"}</button></div></div></div>`;
+    <div class="intake-footer"><span class="mode-note"><span class="mode-dot ${key ? "connected" : ""}"></span>${state.foodReview ? "核對預覽後才會加入記錄" : state.foodPhoto && !state.draft.trim() && state.provider === "deepseek" ? "照片請配合文字描述" : key ? `文字${state.provider === "gemini" ? "及照片" : "描述"}會傳送至 ${providerLabel()}` : "Demo 估算不會分析照片"}</span><div class="intake-actions"><select id="mealSelect" class="meal-select" aria-label="選擇餐段" ${disabled}>${Object.entries(mealNames).map(([value, label]) => `<option value="${value}" ${state.meal === value ? "selected" : ""}>${label}</option>`).join("")}</select><button class="button primary" data-action="analyze" ${disabled}><i data-lucide="${state.loading ? "loader-circle" : "sparkles"}" class="${state.loading ? "spin" : ""}"></i>${state.loading ? "分析中..." : state.foodReview ? "先確認下方預覽" : "估算熱量"}</button></div></div></div>`;
 }
 
 function sportPanel() {
@@ -413,6 +439,11 @@ function bindEvents() {
   document.querySelectorAll("[data-action='view']").forEach((button) => button.addEventListener("click", () => { state.activeView = button.dataset.view; state.filter = "all"; render(); }));
   document.querySelectorAll("[data-action='settings']").forEach((button) => button.addEventListener("click", () => {
     openSettings("[data-action='settings']");
+  }));
+  document.querySelectorAll("[data-action='select-provider']").forEach((button) => button.addEventListener("click", () => {
+    state.provider = button.dataset.provider === "gemini" ? "gemini" : "deepseek";
+    localStorage.setItem(AI_PROVIDER_STORAGE, state.provider);
+    render();
   }));
   document.querySelectorAll("[data-action='tool']").forEach((button) => button.addEventListener("click", () => {
     state.activeTool = button.dataset.tool === "sport" ? "sport" : "food";
@@ -703,11 +734,11 @@ function deleteSportEntry(id) {
 function saveApiKey() {
   const enteredKey = document.querySelector("#apiKeyInput")?.value.trim() || "";
   if (enteredKey) {
-    state.apiKey = enteredKey;
-    localStorage.setItem(API_KEY_STORAGE, state.apiKey);
+    state.apiKeys[state.provider] = enteredKey;
+    localStorage.setItem(AI_KEY_STORAGE[state.provider], enteredKey);
   }
   state.settingsOpen = false;
-  showToast(enteredKey ? "DeepSeek key 已儲存在此瀏覽器" : state.apiKey ? "已繼續使用已儲存的 DeepSeek key" : "目前使用快速試算", "success");
+  showToast(enteredKey ? `${providerLabel()} key 已儲存在此瀏覽器` : activeApiKey() ? `已繼續使用已儲存的 ${providerLabel()} key` : "目前使用快速試算", "success");
   render();
 }
 
@@ -723,10 +754,10 @@ function openSettings(returnFocus = "[data-action='settings']") {
 }
 
 function clearApiKey() {
-  state.apiKey = "";
-  localStorage.removeItem(API_KEY_STORAGE);
+  state.apiKeys[state.provider] = "";
+  localStorage.removeItem(AI_KEY_STORAGE[state.provider]);
   state.settingsOpen = false;
-  showToast("DeepSeek key 已從此瀏覽器移除", "success");
+  showToast(`${providerLabel()} key 已從此瀏覽器移除`, "success");
   render();
 }
 
@@ -752,8 +783,8 @@ async function saveProfileFromForm(form) {
   state.onboardingLoading = true;
   render();
   try {
-    if (state.apiKey && profile.age >= 18) {
-      const aiResult = await analyzeUserProfile(profile, baseline, state.apiKey);
+    if (activeApiKey() && profile.age >= 18) {
+      const aiResult = await analyzeUserProfile(profile, baseline, activeApiKey(), state.provider);
       const suggestedCalories = Number(aiResult.daily_calories);
       if (Number.isFinite(suggestedCalories) && suggestedCalories > 0) {
         const safeLow = Math.max(1200, baseline.calories * 0.9);
@@ -770,13 +801,13 @@ async function saveProfileFromForm(form) {
     state.profile = profile;
     localStorage.setItem(PROFILE_STORAGE, JSON.stringify(profile));
     state.settingsOpen = false;
-    showToast(state.apiKey && profile.age >= 18 ? `DeepSeek 已完成個人分析：${profile.goals.calories} kcal / 日` : `每日目標已估算：${profile.goals.calories} kcal / 日`, "success");
+    showToast(activeApiKey() && profile.age >= 18 ? `${providerLabel()} 已完成個人分析：${profile.goals.calories} kcal / 日` : `每日目標已估算：${profile.goals.calories} kcal / 日`, "success");
   } catch (error) {
-    profile.aiAdvice = "目標先按基本代謝公式估算。加好 DeepSeek key 後，可以再更新個人化建議。";
+    profile.aiAdvice = `目標先按基本代謝公式估算。加好 ${providerLabel()} key 後，可以再更新個人化建議。`;
     state.profile = profile;
     localStorage.setItem(PROFILE_STORAGE, JSON.stringify(profile));
     state.settingsOpen = false;
-    showToast(`已先建立基本目標；DeepSeek 分析未完成：${error.message}`, "error");
+    showToast(`已先建立基本目標；${providerLabel()} 分析未完成：${error.message}`, "error");
   } finally {
     state.onboardingLoading = false;
     render();
@@ -787,12 +818,12 @@ async function analyzeAndPreview() {
   const input = document.querySelector("#foodInput")?.value.trim();
   const image = state.foodPhoto;
   if (!input && !image) { showToast("輸入食物內容或加入一張照片，卡老味先有嘢寸。", "error"); render(); return; }
-  if (image && !input) {
+  if (image && !input && state.provider === "deepseek") {
     showToast("DeepSeek 目前只支援文字，請在描述欄寫下照片中的食物和份量。", "error");
     return;
   }
-  if (image && !state.apiKey) {
-    showToast("文字分析需要 DeepSeek API key，請先設定你的 key。", "error");
+  if (image && !activeApiKey()) {
+    showToast(`文字分析需要 ${providerLabel()} API key，請先設定你的 key。`, "error");
     openSettings("[data-action='analyze']");
     return;
   }
@@ -800,7 +831,7 @@ async function analyzeAndPreview() {
   state.loading = true;
   render();
   try {
-    const analysis = state.apiKey ? await analyzeFoodInput(input, state.apiKey, state.profile, image ? { mimeType: image.mimeType, data: image.data } : null) : mockAnalyze(input);
+    const analysis = activeApiKey() ? await analyzeFoodInput(input, activeApiKey(), state.profile, image ? { mimeType: image.mimeType, data: image.data } : null, state.provider) : mockAnalyze(input);
     const fallbackName = input || "照片中的食物";
     const foodItems = Array.isArray(analysis.food_items) && analysis.food_items.length ? analysis.food_items : [{ name: fallbackName, calories: analysis.total_calories, protein: analysis.total_protein, carbohydrates: analysis.total_carbohydrates, fat: analysis.total_fat }];
     state.foodReview = {

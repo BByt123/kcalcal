@@ -34,3 +34,28 @@ test("requires a text description when a photo is selected", async () => {
     /只支援文字/,
   );
 });
+
+test("uses Gemini when the provider is switched", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestUrl;
+  let requestOptions;
+  globalThis.fetch = async (url, options) => {
+    requestUrl = url;
+    requestOptions = options;
+    return {
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ food_items: [] }) }] } }] }),
+    };
+  };
+
+  try {
+    await analyzeFoodInput("一碗叉燒飯", "gemini-test-key", null, { mimeType: "image/jpeg", data: "Zm9vZA==" }, "gemini");
+    const body = JSON.parse(requestOptions.body);
+    assert.match(requestUrl, /generativelanguage\.googleapis\.com/);
+    assert.equal(requestOptions.headers["x-goog-api-key"], "gemini-test-key");
+    assert.equal(body.generationConfig.responseMimeType, "application/json");
+    assert.equal(body.contents[0].parts[1].inline_data.mime_type, "image/jpeg");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

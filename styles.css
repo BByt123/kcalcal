@@ -436,6 +436,11 @@ h1 { max-width: 620px; margin-bottom: 11px; font-size: 38px; line-height: 1.16; 
 .settings-section .profile-form-grid { margin: 4px 0 5px; }
 .settings-section > .button, .settings-section form > .button { justify-self: start; }
 .api-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.provider-switch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2); }
+.provider-option { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid transparent; border-radius: 5px; color: var(--muted); background: transparent; font-size: 13px; font-weight: 700; }
+.provider-option:hover { color: var(--ink); background: var(--surface-3); }
+.provider-option.active { color: var(--jade); border-color: rgba(var(--jade-rgb), .28); background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.provider-option small { color: var(--faint); font-size: 10px; font-weight: 600; }
 .modal-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 15px 23px; }
 .modal-foot .button { min-height: 42px; }
 .modal-foot .danger { border-color: transparent; }
