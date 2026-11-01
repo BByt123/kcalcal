@@ -1,9 +1,11 @@
 import { analyzeFoodInput, analyzeUserProfile } from "./services/aiService.js";
-import { calculateGoals } from "./services/nutritionService.js";
+import { calculateGoals, applyGoalOverrides, nutritionTargetLimits } from "./services/nutritionService.js";
 import { calculateExerciseCalories, sportOptions } from "./services/sportService.js";
+import { upsertBodyFatRecord } from "./services/bodyFatService.js";
 
 const STORAGE_KEY = "calomei-tracker-v1";
 const SPORT_STORAGE_KEY = "calomei-sport-v1";
+const BODY_FAT_STORAGE_KEY = "calomei-body-fat-v1";
 const AI_PROVIDER_STORAGE = "calomei-ai-provider";
 const AI_KEY_STORAGE = { deepseek: "calomei-deepseek-key", gemini: "calomei-gemini-key" };
 const PROFILE_STORAGE = "calomei-user-profile-v1";
@@ -45,6 +47,9 @@ const state = {
   activeView: "overview",
   entries: loadEntries(),
   sportEntries: loadSportEntries(),
+  bodyFatEntries: loadBodyFatEntries(),
+  bodyFatRange: "all",
+  bodyFatDate: today,
   profile: loadProfile(),
   provider: loadProvider(),
   apiKeys: loadApiKeys(),
@@ -91,6 +96,22 @@ function loadSportEntries() {
   }
 }
 
+function loadBodyFatEntries() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(BODY_FAT_STORAGE_KEY));
+    if (!Array.isArray(saved)) return [];
+    return saved.reduce((entries, entry) => {
+      try {
+        return upsertBodyFatRecord(entries, entry, today).map((record) => record.date === entry.date ? { ...record, id: String(entry.id || record.id) } : record);
+      } catch {
+        return entries;
+      }
+    }, []);
+  } catch {
+    return [];
+  }
+}
+
 function loadProvider() {
   const saved = localStorage.getItem(AI_PROVIDER_STORAGE);
   return saved === "gemini" ? "gemini" : "deepseek";
@@ -122,6 +143,10 @@ function saveSportEntries() {
   localStorage.setItem(SPORT_STORAGE_KEY, JSON.stringify(state.sportEntries));
 }
 
+function saveBodyFatEntries() {
+  localStorage.setItem(BODY_FAT_STORAGE_KEY, JSON.stringify(state.bodyFatEntries));
+}
+
 function activeApiKey() { return state.apiKeys[state.provider] || ""; }
 function providerLabel(provider = state.provider) { return provider === "gemini" ? "Gemini" : "DeepSeek"; }
 
@@ -149,7 +174,7 @@ function totals(entries = todaysEntries()) {
 }
 function dailyCalorieBudget() { return currentGoals().calories + todaysSportCalories(); }
 function formatNumber(value) { return new Intl.NumberFormat("en-US").format(round(value)); }
-function percent(value, goal) { return Math.min(100, Math.max(0, (Number(value) / goal) * 100)); }
+function percent(value, goal) { return goal > 0 ? Math.min(100, Math.max(0, (Number(value) / goal) * 100)) : Number(value) > 0 ? 100 : 0; }
 function timeLabel(time) { return time || "剛剛"; }
 
 function mockAnalyze(input) {
@@ -215,7 +240,7 @@ function toastMarkup(toast = state.toast) {
   return toast ? `<div class="toast ${toast.type}" role="${toast.type === "error" ? "alert" : "status"}"><i data-lucide="${toast.type === "error" ? "circle-alert" : "circle-check"}"></i><span>${escapeHtml(toast.message)}</span>${toast.action ? `<button class="toast-action" type="button" data-action="toast-action">${escapeHtml(toast.action.label)}</button>` : ""}</div>` : "";
 }
 
-function profileFields(profile = {}, includeCalorieTarget = false) {
+function profileFields(profile = {}) {
   const age = Number(profile.age);
   const isYouth = age >= 6 && age < 18;
   const goal = isYouth ? "maintain" : profile.goal || "maintain";
@@ -228,8 +253,16 @@ function profileFields(profile = {}, includeCalorieTarget = false) {
     <label class="form-field"><span>體重</span><input name="weightKg" type="number" min="15" max="300" step="0.1" required value="${escapeHtml(profile.weightKg || "")}" placeholder="kg" /></label>
     <label class="form-field"><span>日常活動量</span><select name="activity" required><option value="sedentary" ${profile.activity === "sedentary" ? "selected" : ""}>少運動，久坐為主</option><option value="light" ${profile.activity === "light" || !profile.activity ? "selected" : ""}>每週輕量活動 1–3 日</option><option value="moderate" ${profile.activity === "moderate" ? "selected" : ""}>每週中量活動 3–5 日</option><option value="active" ${profile.activity === "active" ? "selected" : ""}>每週高強度活動 6–7 日</option><option value="very" ${profile.activity === "very" ? "selected" : ""}>體力工作或高強度訓練</option></select></label>
     <label class="form-field full"><span>目前目標</span><div class="goal-switch" role="group" aria-label="選擇目前目標">${goalOptions.map(([value, label, description]) => `<button class="goal-option ${goal === value ? "active" : ""}" type="button" data-action="select-goal" data-goal="${value}" aria-pressed="${goal === value}" ${isYouth && value !== "maintain" ? "disabled" : ""}><strong>${label}</strong><small>${description}</small></button>`).join("")}</div><input name="goal" type="hidden" value="${goal}" /><small id="goalHelp" class="field-help">${isYouth ? "6–17 歲只提供維持體重估算，請由家長／監護人協助。" : "在手機上點一下目標，再按下方更新個人目標。"}</small></label>
-    ${includeCalorieTarget ? `<label class="form-field full"><span>每日 kcal 上限</span><span class="input-with-unit"><input name="calorieTarget" type="number" min="1000" max="10000" step="10" value="${escapeHtml(profile.goals?.calories || "")}" data-original="${escapeHtml(profile.goals?.calories || "")}" placeholder="例如 2100" inputmode="numeric" required /><span>kcal／日</span></span><small class="field-help">AI 估算後仍可在這裡手動調整；運動消耗會另外加到今日可食上限。</small></label>` : ""}
   </div>`;
+}
+
+function nutritionTargetsForm() {
+  const goals = currentGoals();
+  const fields = [["calories", "每日攝取熱量", "kcal"], ["protein", "蛋白質", "g"], ["carbohydrates", "碳水化合物", "g"], ["fat", "脂肪", "g"]];
+  return `<div class="settings-section"><div class="settings-section-head"><h3>每日營養目標</h3><span class="panel-meta">${state.profile.manualGoals ? "自訂" : "建議目標"}</span></div><form id="nutritionTargetsForm"><div class="nutrition-target-grid">${fields.map(([key, label, unit]) => {
+    const limits = nutritionTargetLimits[key];
+    return `<label class="form-field"><span>${label}</span><span class="input-with-unit"><input name="${key}" type="number" min="${limits.min}" max="${limits.max}" step="${limits.step}" value="${escapeHtml(goals[key])}" inputmode="${key === "calories" ? "numeric" : "decimal"}" required /><span>${unit}／日</span></span></label>`;
+  }).join("")}</div><p class="field-help">運動消耗另外加到今日可食上限。自訂目標會保留至還原。</p><div class="nutrition-target-actions"><button class="button primary" type="submit"><i data-lucide="check"></i>儲存營養目標</button><button class="button ghost" type="button" data-action="reset-nutrition-targets"><i data-lucide="rotate-ccw"></i>還原建議目標</button></div></form></div>`;
 }
 
 function syncAgeGoalOptions(form) {
@@ -259,7 +292,13 @@ function settingsDialog() {
   const providerDescription = state.provider === "gemini"
     ? "Gemini 支援文字及圖片分析。"
     : "DeepSeek 預設使用文字分析；照片請配合描述。";
-  return `<div class="modal-backdrop" data-action="close-settings"><section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1"><div class="modal-head"><div><p class="eyebrow">設定</p><h2 id="settingsTitle">設定與個人資料</h2></div><button class="icon-button" data-action="close-settings" aria-label="關閉設定"><i data-lucide="x"></i></button></div><div class="settings-section"><div class="settings-section-head"><div><h3>AI 供應商</h3><p>${providerDescription}</p></div><span class="api-status ${selectedKey ? "connected" : ""}">${selectedKey ? "已連接" : "未連接"}</span></div><div class="provider-switch" role="group" aria-label="選擇 AI 供應商"><button class="provider-option ${state.provider === "deepseek" ? "active" : ""}" type="button" data-action="select-provider" data-provider="deepseek" aria-pressed="${state.provider === "deepseek"}">DeepSeek <small>預設</small></button><button class="provider-option ${state.provider === "gemini" ? "active" : ""}" type="button" data-action="select-provider" data-provider="gemini" aria-pressed="${state.provider === "gemini"}">Gemini</button></div><label class="form-field"><span>${selectedLabel} API key</span><input id="apiKeyInput" type="password" placeholder="${keyPlaceholder}" autocomplete="new-password" /></label><p class="api-hint">${selectedLabel} key 只會儲存在此瀏覽器。${state.provider === "gemini" ? "食物文字及照片會傳送至 Google Gemini。" : "食物描述及成人目標資料會傳送至 DeepSeek；圖片不會直接傳送。"} GitHub Pages 是公開網站，請勿把 key 寫進程式碼。</p><div class="api-actions"><button class="button" data-action="save-api-key"><i data-lucide="save"></i>${selectedKey ? `更新 ${selectedLabel} key` : `儲存 ${selectedLabel} key`}</button>${selectedKey ? `<button class="button ghost danger" data-action="clear-api-key"><i data-lucide="key-round"></i>移除 ${selectedLabel} key</button>` : ""}</div></div><div class="settings-section"><div class="settings-section-head"><div><h3>每日目標</h3><p>可以改變計劃和 AI 設定的 kcal 上限。</p></div></div><form id="profileEditForm">${profileFields(state.profile || {}, true)}<button class="button primary" type="submit"><i data-lucide="calculator"></i>儲存目標設定</button></form></div><div class="modal-foot"><button class="button danger" data-action="reset-profile"><i data-lucide="rotate-ccw"></i>重設個人資料</button><button class="button ghost" data-action="close-settings">完成</button></div></section></div>`;
+  return `<div class="modal-backdrop" data-action="close-settings"><section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1">
+    <div class="modal-head"><div><p class="eyebrow">設定</p><h2 id="settingsTitle">設定與個人資料</h2></div><button class="icon-button" data-action="close-settings" aria-label="關閉設定"><i data-lucide="x"></i></button></div>
+    ${state.profile ? nutritionTargetsForm() : ""}
+    <div class="settings-section"><div class="settings-section-head"><div><h3>AI 供應商</h3><p>${providerDescription}</p></div><span class="api-status ${selectedKey ? "connected" : ""}">${selectedKey ? "已連接" : "未連接"}</span></div><div class="provider-switch" role="group" aria-label="選擇 AI 供應商"><button class="provider-option ${state.provider === "deepseek" ? "active" : ""}" type="button" data-action="select-provider" data-provider="deepseek" aria-pressed="${state.provider === "deepseek"}">DeepSeek <small>預設</small></button><button class="provider-option ${state.provider === "gemini" ? "active" : ""}" type="button" data-action="select-provider" data-provider="gemini" aria-pressed="${state.provider === "gemini"}">Gemini</button></div><label class="form-field"><span>${selectedLabel} API key</span><input id="apiKeyInput" type="password" placeholder="${keyPlaceholder}" autocomplete="new-password" /></label><p class="api-hint">${selectedLabel} key 只會儲存在此瀏覽器。${state.provider === "gemini" ? "食物文字及照片會傳送至 Google Gemini。" : "食物描述及成人目標資料會傳送至 DeepSeek；圖片不會直接傳送。"} GitHub Pages 是公開網站，請勿把 key 寫進程式碼。</p><div class="api-actions"><button class="button" data-action="save-api-key"><i data-lucide="save"></i>${selectedKey ? `更新 ${selectedLabel} key` : `儲存 ${selectedLabel} key`}</button>${selectedKey ? `<button class="button ghost danger" data-action="clear-api-key"><i data-lucide="key-round"></i>移除 ${selectedLabel} key</button>` : ""}</div></div>
+    <div class="settings-section"><div class="settings-section-head"><h3>個人資料與計劃</h3></div><form id="profileEditForm">${profileFields(state.profile || {})}<button class="button primary" type="submit" ${state.onboardingLoading ? "disabled" : ""}><i data-lucide="${state.onboardingLoading ? "loader-circle" : "calculator"}" class="${state.onboardingLoading ? "spin" : ""}"></i>${state.onboardingLoading ? "正在更新..." : "更新個人計劃"}</button></form></div>
+    <div class="modal-foot"><button class="button danger" data-action="reset-profile"><i data-lucide="rotate-ccw"></i>重設個人資料</button><button class="button ghost" data-action="close-settings">完成</button></div>
+  </section></div>`;
 }
 
 function cameraDialog() {
@@ -354,7 +393,7 @@ function ringPanel(total, progress, remaining, budget = dailyCalorieBudget()) {
   return `<div class="panel-header"><h2 class="panel-title"><i data-lucide="target"></i>今日可食上限</h2><span class="panel-meta">${progress.toFixed(0)}% used</span></div><div class="ring-wrap"><div class="ring" style="--progress: ${progress}%"><div class="ring-center"><span class="ring-value">${formatNumber(total.calories)}</span><span class="ring-unit">/ ${formatNumber(budget)} kcal</span></div></div><div class="ring-copy"><div class="ring-caption">${remaining >= 0 ? "仲有幾多位？" : "今日有少少超速"}<strong>${remaining >= 0 ? `${formatNumber(remaining)} kcal` : `+${formatNumber(Math.abs(remaining))} kcal`}</strong></div><div class="mini-key"><span class="key-line"><i class="key-dot lime"></i>已記錄</span><span class="key-line"><i class="key-dot blue"></i>基本目標 + 運動</span><span class="key-line"><i class="key-dot orange"></i>超出上限</span></div></div></div><div class="macro-row">${macroLine("蛋白質", total.protein, goals.protein, "var(--sky)", "g")}${macroLine("碳水", total.carbohydrates, goals.carbohydrates, "var(--lime)", "g")}${macroLine("脂肪", total.fat, goals.fat, "var(--coral)", "g")}</div>`;
 }
 
-function macroLine(label, value, goal, color, unit) { return `<div class="macro-line"><span class="macro-name">${label}</span><span class="macro-track"><span class="macro-fill" style="width:${percent(value, goal)}%;background:${color}"></span></span><span class="macro-number">${round(value)}${unit}</span></div>`; }
+function macroLine(label, value, goal, color, unit) { return `<div class="macro-line"><span class="macro-name">${label}</span><span class="macro-track"><span class="macro-fill" style="width:${percent(value, goal)}%;background:${color}"></span></span><span class="macro-number">${round(value)}${unit}<small>／${goal}${unit}</small></span></div>`; }
 
 function weekChart() {
   const history = dailyHistory();
@@ -400,14 +439,47 @@ function trendsView() {
   const goals = currentGoals();
   const weekEntries = state.entries.filter((entry) => history.some((day) => day.date === entry.date));
   const hasRecentEntries = weekEntries.some((entry) => Number(entry.calories) > 0);
+  const heading = pageHeading("飲食與身體數據", "睇清每一步變化。", "", `<button class="button" data-action="view" data-view="overview"><i data-lucide="plus"></i>記錄一餐</button>`);
   if (!hasRecentEntries) {
-    return `${pageHeading("過去七日", "睇清一週攝取走勢。", "記錄餐點後，這裡會顯示最近七日的攝取。", "")}<section class="panel trend-empty"><i data-lucide="chart-no-axes-column-increasing"></i><h2>還未有七日記錄</h2><p>記錄第一餐後，熱量走勢和營養比例會在這裡整理出來。</p><button class="button primary" data-action="view" data-view="overview"><i data-lucide="plus"></i>記錄第一餐</button></section>`;
+    return `${heading}${bodyFatPanel()}<section class="panel trend-empty"><i data-lucide="chart-no-axes-column-increasing"></i><h2>最近七日沒有飲食紀錄</h2><button class="button primary" data-action="view" data-view="overview"><i data-lucide="plus"></i>記錄一餐</button></section>`;
   }
   const average = weekEntries.length ? sum(weekEntries, "calories") / 7 : 0;
   const onTrack = history.filter((day) => day.calories > 0 && day.calories <= goals.calories).length;
   const max = Math.max(goals.calories, ...history.map((day) => day.calories));
   const accessibleSummary = history.map((day) => `${day.label} ${formatNumber(day.calories)} 千卡`).join("、");
-  return `${pageHeading("過去七日", "睇清一週攝取走勢。", "把每日記錄放在一起看，找出可持續的飲食節奏。", `<button class="button primary" data-action="view" data-view="overview"><i data-lucide="plus"></i>記錄一餐</button>`)}<div class="trend-grid"><section class="panel trend-chart"><div class="panel-header"><h2 class="panel-title"><i data-lucide="activity"></i>每日熱量</h2><span class="panel-meta">${onTrack}/7 日在目標內</span></div><div class="trend-bars" role="img" aria-label="每日熱量柱狀圖（目標 ${formatNumber(goals.calories)} 千卡，紅色表示超出）：${accessibleSummary}">${history.map((day) => `<div class="trend-bar-col"><span class="trend-bar-value">${day.calories ? formatNumber(day.calories) : "—"}</span><div class="trend-bar-track"><span class="trend-bar-fill ${day.calories > goals.calories ? "over" : ""}" style="height:${day.calories ? Math.max(5, day.calories / max * 100) : 5}%"></span></div><span class="trend-bar-label">${escapeHtml(day.label)}</span></div>`).join("")}</div><div class="trend-summary"><div class="summary-line"><span>日均攝取</span><strong>${formatNumber(average)} kcal</strong></div><div class="summary-line"><span>平均蛋白質</span><strong>${formatNumber(sum(weekEntries, "protein") / 7)} g</strong></div><div class="summary-line"><span>最接近目標的一日</span><strong class="good">${history.filter((day) => day.calories > 0).sort((a,b) => Math.abs(a.calories - goals.calories) - Math.abs(b.calories - goals.calories))[0]?.label || "—"}</strong></div></div></section><section class="panel weekly-panel">${weeklyMacros(weekEntries)}</section></div>`;
+  return `${heading}${bodyFatPanel()}<div class="trend-grid"><section class="panel trend-chart"><div class="panel-header"><h2 class="panel-title"><i data-lucide="activity"></i>每日熱量</h2><span class="panel-meta">${onTrack}/7 日在目標內</span></div><div class="trend-bars" role="img" aria-label="每日熱量柱狀圖（目標 ${formatNumber(goals.calories)} 千卡，紅色表示超出）：${accessibleSummary}">${history.map((day) => `<div class="trend-bar-col"><span class="trend-bar-value">${day.calories ? formatNumber(day.calories) : "—"}</span><div class="trend-bar-track"><span class="trend-bar-fill ${day.calories > goals.calories ? "over" : ""}" style="height:${day.calories ? Math.max(5, day.calories / max * 100) : 5}%"></span></div><span class="trend-bar-label">${escapeHtml(day.label)}</span></div>`).join("")}</div><div class="trend-summary"><div class="summary-line"><span>日均攝取</span><strong>${formatNumber(average)} kcal</strong></div><div class="summary-line"><span>平均蛋白質</span><strong>${formatNumber(sum(weekEntries, "protein") / 7)} g</strong></div><div class="summary-line"><span>最接近目標的一日</span><strong class="good">${history.filter((day) => day.calories > 0).sort((a,b) => Math.abs(a.calories - goals.calories) - Math.abs(b.calories - goals.calories))[0]?.label || "—"}</strong></div></div></section><section class="panel weekly-panel">${weeklyMacros(weekEntries)}</section></div>`;
+}
+
+function bodyFatPanel() {
+  const allEntries = [...state.bodyFatEntries].sort((a, b) => a.date.localeCompare(b.date));
+  const startDate = state.bodyFatRange === "all" ? "" : offsetDate(today, 1 - Number(state.bodyFatRange));
+  const entries = allEntries.filter((entry) => entry.date >= startDate);
+  const selected = allEntries.find((entry) => entry.date === state.bodyFatDate);
+  const latest = entries.at(-1);
+  const change = entries.length > 1 ? Math.round((latest.percent - entries[0].percent) * 10) / 10 : null;
+  return `<section class="body-fat-section" aria-labelledby="bodyFatTitle">
+    <div class="body-fat-heading"><h2 class="panel-title" id="bodyFatTitle"><i data-lucide="activity"></i>體脂紀錄與趨勢</h2><select id="bodyFatRange" class="meal-select" aria-label="體脂趨勢期間">${[["30", "近 30 日"], ["90", "近 90 日"], ["all", "全部紀錄"]].map(([value, label]) => `<option value="${value}" ${state.bodyFatRange === value ? "selected" : ""}>${label}</option>`).join("")}</select></div>
+    <div class="body-fat-grid"><form id="bodyFatForm" class="body-fat-form"><label class="form-field"><span>量度日期</span><input name="date" type="date" max="${today}" value="${state.bodyFatDate}" required /></label><label class="form-field"><span>體脂率</span><span class="input-with-unit"><input name="percent" type="number" min="1" max="70" step="0.1" inputmode="decimal" placeholder="例如 22.5" value="${selected ? selected.percent : ""}" required /><span>%</span></span></label><button class="button primary" type="submit"><i data-lucide="${selected ? "check" : "plus"}"></i><span data-body-fat-submit>${selected ? "更新體脂紀錄" : "儲存體脂紀錄"}</span></button><small class="field-help">同日紀錄會更新。</small></form>
+    <div class="body-fat-trend"><div class="body-fat-stats"><div><span>最近體脂</span><strong>${latest ? `${latest.percent.toFixed(1)}<small>%</small>` : "尚未記錄"}</strong><small>${latest ? latest.date : ""}</small></div><div><span>期間變化</span><strong>${change === null ? "—" : `${change > 0 ? "+" : ""}${change.toFixed(1)}<small>百分點</small>`}</strong><small>${entries.length > 1 ? `${entries[0].date} 至 ${latest.date}` : latest ? "再記錄一次即可比較" : ""}</small></div></div>
+    ${entries.length ? bodyFatChart(entries) : `<div class="body-fat-empty"><i data-lucide="chart-no-axes-combined"></i><p>${allEntries.length ? "這段期間未有體脂紀錄" : "尚未有體脂紀錄"}</p></div>`}</div></div>
+    ${allEntries.length ? `<details class="body-fat-history" open><summary>體脂歷史紀錄 <span>${allEntries.length} 筆</span></summary><div class="body-fat-table-wrap"><table class="body-fat-table"><caption class="sr-only">所有體脂紀錄，按日期由新到舊</caption><thead><tr><th scope="col">日期</th><th scope="col">體脂率</th><th scope="col"><span class="sr-only">操作</span></th></tr></thead><tbody>${allEntries.reverse().map((entry) => `<tr><th scope="row"><time datetime="${entry.date}">${entry.date}</time></th><td>${entry.percent.toFixed(1)}%</td><td><button class="icon-button" type="button" data-action="edit-body-fat" data-date="${entry.date}" aria-label="修改 ${entry.date} 體脂紀錄" title="修改紀錄"><i data-lucide="pencil"></i></button><button class="icon-button danger" type="button" data-action="delete-body-fat" data-id="${escapeHtml(entry.id)}" aria-label="刪除 ${entry.date} 體脂紀錄" title="刪除紀錄"><i data-lucide="trash-2"></i></button></td></tr>`).join("")}</tbody></table></div></details>` : ""}
+  </section>`;
+}
+
+function bodyFatChart(entries) {
+  const values = entries.map((entry) => entry.percent);
+  const low = Math.max(0, Math.floor(Math.min(...values) / 5) * 5 - 5);
+  const high = Math.min(70, Math.ceil(Math.max(...values) / 5) * 5 + 5);
+  const start = Date.parse(entries[0].date);
+  const end = Date.parse(entries.at(-1).date);
+  const points = entries.map((entry) => ({
+    ...entry,
+    x: start === end ? 320 : 12 + (Date.parse(entry.date) - start) / (end - start) * 616,
+    y: 12 + (high - entry.percent) / (high - low) * 176,
+  }));
+  const middleDate = new Date(start + (end - start) / 2).toISOString().slice(0, 10);
+  const summary = `體脂率折線圖，橫軸為日期 ${entries[0].date} 至 ${entries.at(-1).date}，縱軸為體脂率 ${low}% 至 ${high}%。共 ${entries.length} 次量度，最近 ${entries.at(-1).percent.toFixed(1)}%。詳細數據見下方體脂歷史紀錄。`;
+  return `<div class="body-fat-chart" role="img" aria-label="${summary}"><div class="body-fat-plot"><svg viewBox="0 0 640 200" preserveAspectRatio="none" aria-hidden="true"><path class="body-fat-gridlines" d="M0 12H640 M0 100H640 M0 188H640" />${points.length > 1 ? `<polyline class="body-fat-line" points="${points.map((point) => `${point.x},${point.y}`).join(" ")}" />` : ""}${points.map((point) => `<circle class="body-fat-point" cx="${point.x}" cy="${point.y}" r="4" vector-effect="non-scaling-stroke"><title>${point.date}：${point.percent.toFixed(1)}%</title></circle>`).join("")}</svg><div class="body-fat-y-labels" aria-hidden="true"><span>${high}%</span><span>${(high + low) / 2}%</span><span>${low}%</span></div></div><div class="body-fat-x-labels" aria-hidden="true">${start === end ? `<span>${entries[0].date}</span>` : `<span>${entries[0].date.slice(5).replace("-", "/")}</span><span>${middleDate.slice(5).replace("-", "/")}</span><span>${entries.at(-1).date.slice(5).replace("-", "/")}</span>`}</div></div>`;
 }
 
 function weeklyMacros(entries) {
@@ -508,6 +580,23 @@ function bindEvents() {
   });
   document.querySelector("#onboardingForm")?.addEventListener("submit", (event) => { event.preventDefault(); saveProfileFromForm(event.currentTarget); });
   document.querySelector("#profileEditForm")?.addEventListener("submit", (event) => { event.preventDefault(); saveProfileFromForm(event.currentTarget); });
+  document.querySelector("#nutritionTargetsForm")?.addEventListener("submit", (event) => { event.preventDefault(); saveNutritionTargets(event.currentTarget); });
+  document.querySelector("[data-action='reset-nutrition-targets']")?.addEventListener("click", resetNutritionTargets);
+  document.querySelector("#bodyFatForm")?.addEventListener("submit", (event) => { event.preventDefault(); saveBodyFatRecord(event.currentTarget); });
+  document.querySelector("#bodyFatRange")?.addEventListener("change", (event) => { state.bodyFatRange = event.target.value; render(); });
+  document.querySelector("#bodyFatForm [name='date']")?.addEventListener("change", (event) => {
+    state.bodyFatDate = event.target.value;
+    const existing = state.bodyFatEntries.find((entry) => entry.date === state.bodyFatDate);
+    const form = event.currentTarget.form;
+    form.elements.namedItem("percent").value = existing ? existing.percent : "";
+    form.querySelector("[data-body-fat-submit]").textContent = existing ? "更新體脂紀錄" : "儲存體脂紀錄";
+  });
+  document.querySelectorAll("[data-action='edit-body-fat']").forEach((button) => button.addEventListener("click", () => {
+    state.bodyFatDate = button.dataset.date;
+    render();
+    document.querySelector("#bodyFatForm [name='percent']")?.focus();
+  }));
+  document.querySelectorAll("[data-action='delete-body-fat']").forEach((button) => button.addEventListener("click", () => deleteBodyFatRecord(button.dataset.id)));
   document.querySelector("#sportForm")?.addEventListener("submit", (event) => { event.preventDefault(); calculateSportPreview(event.currentTarget); });
   document.querySelector("[data-action='save-sport-preview']")?.addEventListener("click", saveSportPreview);
   document.querySelector("[data-action='cancel-sport-preview']")?.addEventListener("click", () => { state.sportPreview = null; render(); });
@@ -783,9 +872,6 @@ function clearApiKey() {
 async function saveProfileFromForm(form) {
   if (!form.reportValidity()) return;
   const values = Object.fromEntries(new FormData(form));
-  const calorieTargetInput = form.elements.namedItem("calorieTarget");
-  const calorieTargetChanged = form.id === "profileEditForm" && calorieTargetInput && String(values.calorieTarget) !== String(calorieTargetInput.dataset.original || "");
-  const manualCalorieTarget = calorieTargetChanged ? Number(values.calorieTarget) : null;
   const profile = {
     name: values.name.trim(),
     age: Number(values.age),
@@ -795,12 +881,12 @@ async function saveProfileFromForm(form) {
     activity: values.activity,
     goal: Number(values.age) < 18 ? "maintain" : values.goal,
   };
-  const applyManualCalorieTarget = () => {
-    if (!Number.isFinite(manualCalorieTarget) || manualCalorieTarget <= 0) return;
-    const minimum = profile.age < 18 ? 1000 : 1200;
-    profile.goals.calories = Math.round(Math.min(10000, Math.max(minimum, manualCalorieTarget)) / 10) * 10;
-    profile.goals.fat = Math.round(profile.goals.calories * 0.28 / 9);
-    profile.goals.carbohydrates = Math.max(0, Math.round((profile.goals.calories - profile.goals.protein * 4 - profile.goals.fat * 9) / 4));
+  const applyManualGoals = () => {
+    profile.recommendedGoals = { ...profile.goals };
+    if (state.profile?.manualGoals) {
+      profile.manualGoals = { ...state.profile.manualGoals };
+      profile.goals = applyGoalOverrides(profile.goals, profile.manualGoals);
+    }
   };
   const baseline = calculateGoals(profile);
   profile.goals = baseline;
@@ -827,13 +913,13 @@ async function saveProfileFromForm(form) {
       profile.aiAdvice = typeof aiResult.daily_tip === "string" ? aiResult.daily_tip.slice(0, 320) : "個人化目標已更新。份量記清楚啲，卡老味先唔使靠估。";
       profile.rationale = typeof aiResult.rationale === "string" ? aiResult.rationale.slice(0, 320) : "以基本資料和活動量作估算。";
     }
-    applyManualCalorieTarget();
+    applyManualGoals();
     state.profile = profile;
     localStorage.setItem(PROFILE_STORAGE, JSON.stringify(profile));
     state.settingsOpen = false;
-    showToast(activeApiKey() && profile.age >= 18 ? `${providerLabel()} 已完成個人分析：${profile.goals.calories} kcal / 日` : `每日目標已估算：${profile.goals.calories} kcal / 日`, "success");
+    showToast(profile.manualGoals ? "個人計劃已更新，自訂營養目標已保留" : activeApiKey() && profile.age >= 18 ? `${providerLabel()} 已完成個人分析：${profile.goals.calories} kcal / 日` : `每日目標已估算：${profile.goals.calories} kcal / 日`, "success");
   } catch (error) {
-    applyManualCalorieTarget();
+    applyManualGoals();
     profile.aiAdvice = `目標先按基本代謝公式估算。加好 ${providerLabel()} key 後，可以再更新個人化建議。`;
     state.profile = profile;
     localStorage.setItem(PROFILE_STORAGE, JSON.stringify(profile));
@@ -842,6 +928,84 @@ async function saveProfileFromForm(form) {
   } finally {
     state.onboardingLoading = false;
     render();
+  }
+}
+
+function saveNutritionTargets(form) {
+  if (!state.profile || !form.reportValidity()) return;
+  try {
+    const values = Object.fromEntries(new FormData(form));
+    const goals = applyGoalOverrides(state.profile.goals, values);
+    const manualGoals = Object.fromEntries(Object.keys(nutritionTargetLimits).map((key) => [key, goals[key]]));
+    const profile = { ...state.profile, recommendedGoals: state.profile.recommendedGoals || { ...state.profile.goals }, goals, manualGoals };
+    localStorage.setItem(PROFILE_STORAGE, JSON.stringify(profile));
+    state.profile = profile;
+    state.settingsOpen = false;
+    render();
+    showToast("每日熱量及營養目標已儲存", "success");
+  } catch (error) {
+    showToast(error.message || "無法儲存目標，請檢查瀏覽器儲存空間。", "error");
+  }
+}
+
+function resetNutritionTargets() {
+  if (!state.profile) return;
+  const profile = { ...state.profile, goals: { ...(state.profile.recommendedGoals || calculateGoals(state.profile)) } };
+  delete profile.manualGoals;
+  try {
+    localStorage.setItem(PROFILE_STORAGE, JSON.stringify(profile));
+    state.profile = profile;
+    render();
+    showToast("已還原最新建議目標", "success");
+  } catch {
+    showToast("無法儲存目標，請檢查瀏覽器儲存空間。", "error");
+  }
+}
+
+function saveBodyFatRecord(form) {
+  if (!form.reportValidity()) return;
+  try {
+    const values = Object.fromEntries(new FormData(form));
+    const isUpdate = state.bodyFatEntries.some((entry) => entry.date === values.date);
+    const entries = upsertBodyFatRecord(state.bodyFatEntries, values, today);
+    localStorage.setItem(BODY_FAT_STORAGE_KEY, JSON.stringify(entries));
+    state.bodyFatEntries = entries;
+    state.bodyFatDate = values.date;
+    render();
+    showToast(isUpdate ? "體脂紀錄已更新" : "體脂紀錄已儲存", "success");
+  } catch (error) {
+    showToast(error.message || "無法儲存體脂紀錄。", "error");
+  }
+}
+
+function deleteBodyFatRecord(id) {
+  const deleted = state.bodyFatEntries.find((entry) => entry.id === id);
+  if (!deleted) return;
+  const entries = state.bodyFatEntries.filter((entry) => entry.id !== id);
+  try {
+    localStorage.setItem(BODY_FAT_STORAGE_KEY, JSON.stringify(entries));
+    state.bodyFatEntries = entries;
+    render();
+    showToast(`${deleted.date} 體脂紀錄已刪除`, "success", {
+      label: "復原",
+      run: () => {
+        if (state.bodyFatEntries.some((entry) => entry.date === deleted.date)) {
+          showToast("該日已有新體脂紀錄，已保留新數據。", "error");
+          return;
+        }
+        const restored = [...state.bodyFatEntries, deleted];
+        try {
+          localStorage.setItem(BODY_FAT_STORAGE_KEY, JSON.stringify(restored));
+          state.bodyFatEntries = restored;
+          render();
+          showToast("體脂紀錄已復原", "success");
+        } catch {
+          showToast("無法復原體脂紀錄。", "error");
+        }
+      },
+    });
+  } catch {
+    showToast("無法刪除體脂紀錄。", "error");
   }
 }
 
@@ -945,20 +1109,25 @@ function saveAllReviewedFoods() {
 }
 
 function clearToday() {
-  if (!todaysEntries().length && !todaysSportEntries().length) { showToast("今日仲未有記錄。", "error"); render(); return; }
+  const removedBodyFatEntries = state.bodyFatEntries.filter((entry) => entry.date === today);
+  if (!todaysEntries().length && !todaysSportEntries().length && !removedBodyFatEntries.length) { showToast("今日仲未有記錄。", "error"); render(); return; }
   const removedEntries = todaysEntries();
   const removedSportEntries = todaysSportEntries();
   state.entries = state.entries.filter((entry) => entry.date !== today);
   state.sportEntries = state.sportEntries.filter((entry) => entry.date !== today);
+  state.bodyFatEntries = state.bodyFatEntries.filter((entry) => entry.date !== today);
   saveEntries();
   saveSportEntries();
+  saveBodyFatEntries();
   showToast("今日記錄已清除", "success", {
     label: "復原",
     run: () => {
       state.entries.push(...removedEntries);
       state.sportEntries.push(...removedSportEntries);
+      state.bodyFatEntries.push(...removedBodyFatEntries.filter((removed) => !state.bodyFatEntries.some((entry) => entry.date === removed.date)));
       saveEntries();
       saveSportEntries();
+      saveBodyFatEntries();
       render();
       showToast("今日記錄已復原", "success");
     },

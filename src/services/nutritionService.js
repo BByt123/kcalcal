@@ -11,6 +11,27 @@ const youthActivityFactors = {
   female: { sedentary: 1, light: 1.16, moderate: 1.31, active: 1.56, very: 1.56 },
 };
 
+export const nutritionTargetLimits = {
+  calories: { min: 1000, max: 10000, step: 1 },
+  protein: { min: 0, max: 1000, step: 0.1 },
+  carbohydrates: { min: 0, max: 2000, step: 0.1 },
+  fat: { min: 0, max: 1000, step: 0.1 },
+};
+
+export function applyGoalOverrides(goals, overrides = {}) {
+  const result = { ...goals };
+  for (const [key, limits] of Object.entries(nutritionTargetLimits)) {
+    if (!Object.hasOwn(overrides, key)) continue;
+    const raw = overrides[key];
+    const value = Number(raw);
+    if (raw === null || String(raw).trim() === "" || !Number.isFinite(value) || value < limits.min || value > limits.max) {
+      throw new Error("請填寫有效的每日營養目標。");
+    }
+    result[key] = key === "calories" ? Math.round(value) : Math.round(value * 10) / 10;
+  }
+  return result;
+}
+
 export function calculateGoals(profile) {
   const weight = Number(profile.weightKg);
   const height = Number(profile.heightCm);

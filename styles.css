@@ -306,6 +306,7 @@ h1 { max-width: 620px; margin-bottom: 11px; font-size: 38px; line-height: 1.16; 
 .macro-track { height: 7px; overflow: hidden; border-radius: 99px; background: var(--track); }
 .macro-fill { height: 100%; border-radius: inherit; }
 .macro-number { color: var(--ink); font-family: var(--font-mono); font-size: 12px; text-align: right; }
+.macro-number small { display: block; color: var(--muted); font-size: 11px; }
 
 .bottom-grid { display: grid; grid-template-columns: minmax(0, 1.36fr) minmax(310px, .84fr); gap: 12px; margin-top: 12px; }
 .bottom-grid.single { grid-template-columns: minmax(0, 1fr); }
@@ -423,6 +424,47 @@ h1 { max-width: 620px; margin-bottom: 11px; font-size: 38px; line-height: 1.16; 
 .goal-option.active small { color: var(--jade); }
 .goal-option:disabled { cursor: not-allowed; opacity: .45; }
 .field-help { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.nutrition-target-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 18px; }
+.nutrition-target-grid input { font-size: 16px; }
+.nutrition-target-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.nutrition-target-actions .button { min-height: 44px; }
+.body-fat-section { margin-bottom: 28px; padding: 20px 0; border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line); }
+.body-fat-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+.body-fat-grid { display: grid; grid-template-columns: minmax(200px, 250px) minmax(0, 1fr); gap: 36px; align-items: start; }
+.body-fat-form { display: grid; gap: 16px; }
+.body-fat-form input { min-height: 48px; font-size: 16px; }
+.body-fat-form .button { min-height: 48px; }
+.body-fat-trend { min-width: 0; }
+.body-fat-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.body-fat-stats > div { min-width: 0; display: grid; align-content: start; gap: 4px; }
+.body-fat-stats span, .body-fat-stats > div > small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.body-fat-stats strong { font-size: 23px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.body-fat-stats strong small { margin-left: 5px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.body-fat-chart { margin-top: 18px; }
+.body-fat-plot { display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 10px; }
+.body-fat-plot svg { display: block; width: 100%; height: 200px; overflow: visible; }
+.body-fat-gridlines { stroke: var(--line); stroke-width: 1; fill: none; vector-effect: non-scaling-stroke; }
+.body-fat-line { stroke: var(--sky); stroke-width: 2.5; stroke-linejoin: round; fill: none; vector-effect: non-scaling-stroke; }
+.body-fat-point { fill: var(--surface); stroke: var(--sky); stroke-width: 2; }
+.body-fat-y-labels { display: flex; flex-direction: column; justify-content: space-between; padding: 4px 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.body-fat-x-labels { display: flex; justify-content: space-between; gap: 8px; margin: 7px 50px 0 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.body-fat-x-labels > span:only-child { margin-inline: auto; }
+.body-fat-empty { min-height: 200px; display: grid; align-content: center; justify-items: center; gap: 10px; color: var(--muted); }
+.body-fat-empty svg { width: 28px; height: 28px; color: var(--sky); }
+.body-fat-empty p { margin: 0; font-size: 14px; }
+.body-fat-history { margin-top: 24px; border-top: 1px solid var(--line); }
+.body-fat-history summary { min-height: 48px; padding: 14px 0; cursor: pointer; font-size: 14px; font-weight: 600; }
+.body-fat-history summary span { margin-left: 8px; color: var(--muted); font-size: 12px; font-weight: 400; }
+.body-fat-history summary:focus-visible { outline: 3px solid var(--jade); outline-offset: 2px; }
+.body-fat-table-wrap { max-height: 320px; overflow: auto; }
+.body-fat-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.body-fat-table th, .body-fat-table td { padding: 6px 12px; border-bottom: 1px solid var(--line); text-align: left; }
+.body-fat-table th:first-child { padding-left: 0; }
+.body-fat-table thead th { color: var(--muted); font-weight: 500; }
+.body-fat-table tbody th { font-weight: 400; white-space: nowrap; }
+.body-fat-table td:last-child { width: 100px; padding: 0; text-align: right; white-space: nowrap; }
+.body-fat-table .danger { color: var(--tomato); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .form-disclaimer { margin: 16px 21px 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.55; }
 .onboarding-submit { width: calc(100% - 42px); margin: 16px 21px 21px; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 8; display: grid; place-items: center; padding: 20px; background: var(--scrim); }
@@ -581,6 +623,24 @@ h1 { max-width: 620px; margin-bottom: 11px; font-size: 38px; line-height: 1.16; 
   .log-row .delete-button { width: 36px; height: 40px; }
   .chart { gap: 4px; padding-left: 13px; padding-right: 13px; }
   .bar-day { font-size: 10px; }
+}
+
+@media (max-width: 760px) {
+  .body-fat-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .body-fat-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .body-fat-form > .button, .body-fat-form > .field-help { grid-column: 1 / -1; }
+  .body-fat-form input[type="date"] { min-width: 0; max-width: 100%; }
+  .nutrition-target-grid { gap: 14px 12px; }
+  .nutrition-target-grid .input-with-unit { position: relative; }
+  .nutrition-target-grid input { padding-right: 50px; }
+  .nutrition-target-grid .input-with-unit > span { position: absolute; right: 10px; font-size: 11px; pointer-events: none; }
+  .nutrition-target-grid input[name="calories"] { padding-right: 65px; }
+  .nutrition-target-actions { flex-direction: column; }
+  .nutrition-target-actions .button { width: 100%; }
+}
+
+@media (max-width: 360px) {
+  .nutrition-target-grid, .body-fat-form { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-contrast: more) {
